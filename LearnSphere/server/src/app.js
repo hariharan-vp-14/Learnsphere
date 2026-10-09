@@ -3,11 +3,16 @@ const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 
+const authRoutes = require("./routes/auth.routes");
+
 const app = express();
+const clientOrigin = process.env.CLIENT_URL
+  ? new URL(process.env.CLIENT_URL).origin
+  : "http://localhost:5173";
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: clientOrigin,
     credentials: true,
   })
 );
@@ -22,5 +27,7 @@ app.get("/api/health", (req, res) => {
     message: "LearnSphere API is running",
   });
 });
+
+app.use("/api/auth", authRoutes);
 
 module.exports = app;

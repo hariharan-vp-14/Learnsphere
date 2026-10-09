@@ -4,21 +4,26 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
-  "dev": "nodemon src/server.js",
-  "start": "node src/server.js"
-},
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@prisma/adapter-mariadb": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "helmet": "^8.3.0",
-    "prisma": "^8.0.0-rc.19"
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^10.0.16",
+    "prisma": "^7.10.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum QuestionType {
+  MCQ
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  CODING
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id                              Int       @id @default(autoincrement())
+  name                            String
+  email                           String    @unique
+  passwordHash                    String
+  role                            UserRole  @default(STUDENT)
+  emailVerifiedAt                 DateTime?
+  emailVerificationTokenHash      String?   @unique @db.Char(64)
+  emailVerificationTokenExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courses      Course[]      @relation("InstructorCourses")
+  enrollments  Enrollment[]
+  attempts     Attempt[]
+  orders       Order[]
+  certificates Certificate[]
+}
+
+model Course {
+  id          Int          @id @default(autoincrement())
+  title       String
+  slug        String       @unique
+  description String       @db.Text
+  price       Decimal      @db.Decimal(10, 2)
+  status      CourseStatus @default(DRAFT)
+
+  instructorId Int
+  instructor   User @relation("InstructorCourses", fields: [instructorId], references: [id])
+
+  modules      Module[]
+  enrollments  Enrollment[]
+  assessments  Assessment[]
+  orders       Order[]
+  certificates Certificate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([instructorId])
+  @@index([status])
+}
+
+model Module {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String? @db.Text
+  position    Int
+
+  courseId Int
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  lessons Lesson[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Lesson {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String? @db.Text
+  videoUrl    String?
+  content     String? @db.LongText
+  position    Int
+
+  moduleId Int
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([moduleId])
+}
+
+model Enrollment {
+  id Int @id @default(autoincrement())
+
+  studentId Int
+  courseId  Int
+
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  status             EnrollmentStatus @default(ACTIVE)
+  progressPercentage Decimal          @default(0) @db.Decimal(5, 2)
+
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  @@unique([studentId, courseId])
+  @@index([studentId])
+  @@index([courseId])
+}
+
+model Assessment {
+  id              Int     @id @default(autoincrement())
+  title           String
+  description     String? @db.Text
+  durationMinutes Int
+
+  courseId Int
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  questions Question[]
+  attempts  Attempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Question {
+  id         Int          @id @default(autoincrement())
+  question   String       @db.Text
+  type       QuestionType
+  difficulty Difficulty   @default(MEDIUM)
+  points     Int          @default(1)
+
+  assessmentId Int
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  options QuestionOption[]
+  answers Answer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assessmentId])
+}
+
+model QuestionOption {
+  id         Int     @id @default(autoincrement())
+  optionText String  @db.Text
+  isCorrect  Boolean @default(false)
+
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model Attempt {
+  id Int @id @default(autoincrement())
+
+  studentId    Int
+  assessmentId Int
+
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  status      AttemptStatus @default(IN_PROGRESS)
+  score       Decimal?      @db.Decimal(5, 2)
+  startedAt   DateTime      @default(now())
+  submittedAt DateTime?
+
+  answers Answer[]
+
+  @@index([studentId])
+  @@index([assessmentId])
+}
+
+model Answer {
+  id Int @id @default(autoincrement())
+
+  attemptId  Int
+  questionId Int
+
+  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  selectedOptionId Int?
+  textAnswer       String?  @db.Text
+  isCorrect        Boolean?
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model Order {
+  id Int @id @default(autoincrement())
+
+  userId   Int
+  courseId Int
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  amount Decimal       @db.Decimal(10, 2)
+  status PaymentStatus @default(PENDING)
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([courseId])
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+
+  orderId Int
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  provider          String
+  providerPaymentId String? @unique
+  providerOrderId   String?
+
+  amount   Decimal       @db.Decimal(10, 2)
+  currency String        @default("INR")
+  status   PaymentStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+model Certificate {
+  id Int @id @default(autoincrement())
+
+  certificateNumber String @unique
+
+  studentId Int
+  courseId  Int
+
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  issuedAt DateTime @default(now())
+
+  @@index([studentId])
+  @@index([courseId])
+}
