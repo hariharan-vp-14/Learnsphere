@@ -3,9 +3,16 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getApiErrorMessage } from './api/axios'
 import ProtectedRoute from './components/ProtectedRoute'
 import { useAuth } from './context/AuthContext'
+import CourseCatalog from './pages/CourseCatalog'
+import CourseDetails from './pages/CourseDetails'
+import InstructorDashboard from './pages/InstructorDashboard'
+import InstructorStudents from './pages/InstructorStudents'
+import CurriculumEditor from './pages/CurriculumEditor'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import StudentLearning from './pages/StudentLearning'
 import StudentDashboard from './pages/StudentDashboard'
+import VerificationPending from './pages/VerificationPending'
 
 function VerifyEmail() {
   const { verifyEmail } = useAuth()
@@ -14,6 +21,8 @@ function VerifyEmail() {
   const [message, setMessage] = useState('')
   const verificationStarted = useRef('')
   const token = new URLSearchParams(location.search).get('token')
+  const requestedRole = new URLSearchParams(location.search).get('role')
+  const selectedRole = requestedRole === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'STUDENT'
 
   useEffect(() => {
     if (!token) return
@@ -58,9 +67,9 @@ function VerifyEmail() {
       {visibleStatus !== 'loading' && (
         <Link
           className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-brand px-[17px] text-[13px] font-bold text-white no-underline transition hover:-translate-y-px hover:bg-[#354418]"
-          to="/login"
+          to={`/login?role=${selectedRole}${visibleStatus === 'success' ? '&verified=1' : ''}`}
         >
-          Continue to sign in
+          {visibleStatus === 'success' ? `Continue to ${selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in` : 'Return to sign in'}
         </Link>
       )}
       </section>
@@ -71,10 +80,45 @@ function VerifyEmail() {
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<Navigate to="/courses" replace />} />
+      <Route path="/courses" element={<CourseCatalog />} />
+      <Route path="/courses/:slug" element={<CourseDetails />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/verification-pending" element={<VerificationPending />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route
+        path="/instructor/courses"
+        element={
+          <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
+            <InstructorDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/instructor/courses/:courseId/curriculum"
+        element={
+          <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
+            <CurriculumEditor />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/instructor/students"
+        element={
+          <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
+            <InstructorStudents />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/learning"
+        element={
+          <ProtectedRoute allowedRoles={['STUDENT']}>
+            <StudentLearning />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard"
         element={

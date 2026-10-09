@@ -23,9 +23,13 @@ const respondWithAuthError = (res, error, fallbackMessage) => {
 const register = async (req, res) => {
   try {
     const user = await authService.register(req.body);
-    return res.status(201).json({
+    return res.status(user.existingAccount ? 200 : 201).json({
       success: true,
-      message: "Account created. Check your email to verify your account before signing in.",
+      message: user.emailVerified
+        ? user.teacherAccessAdded
+          ? "Teacher access added to your existing account. You can sign in as a teacher."
+          : "Teacher access is already enabled for this account."
+        : "Account created. Check your email to verify your account before signing in.",
       data: user,
     });
   } catch (error) {

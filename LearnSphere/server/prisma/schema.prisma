@@ -64,10 +64,20 @@ model User {
   updatedAt DateTime @updatedAt
 
   courses      Course[]      @relation("InstructorCourses")
+  instructorProfile InstructorProfile?
   enrollments  Enrollment[]
+  lessonProgress LessonProgress[]
   attempts     Attempt[]
   orders       Order[]
   certificates Certificate[]
+}
+
+model InstructorProfile {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Course {
@@ -82,6 +92,7 @@ model Course {
   instructor   User @relation("InstructorCourses", fields: [instructorId], references: [id])
 
   modules      Module[]
+  views        CourseView[]
   enrollments  Enrollment[]
   assessments  Assessment[]
   orders       Order[]
@@ -92,6 +103,17 @@ model Course {
 
   @@index([instructorId])
   @@index([status])
+}
+
+model CourseView {
+  id         Int      @id @default(autoincrement())
+  courseId   Int
+  visitorId  String   @db.Char(36)
+  createdAt  DateTime @default(now())
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, visitorId])
+  @@index([courseId, createdAt])
 }
 
 model Module {
@@ -121,6 +143,7 @@ model Lesson {
 
   moduleId Int
   module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  progress LessonProgress[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -143,9 +166,27 @@ model Enrollment {
   enrolledAt  DateTime  @default(now())
   completedAt DateTime?
 
+  lessonProgress LessonProgress[]
+
   @@unique([studentId, courseId])
   @@index([studentId])
   @@index([courseId])
+}
+
+model LessonProgress {
+  id           Int        @id @default(autoincrement())
+  enrollmentId Int
+  lessonId     Int
+  studentId    Int
+  completedAt  DateTime   @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, lessonId])
+  @@index([studentId])
+  @@index([lessonId])
 }
 
 model Assessment {

@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 
-const sendVerificationEmail = async ({ email, token }) => {
+const sendVerificationEmail = async ({ email, token, accountType }) => {
   const { SMTP_HOST, SMTP_USER, SMTP_PASS, CLIENT_URL } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !CLIENT_URL) {
     throw new Error("SMTP_HOST, SMTP_USER, SMTP_PASS, and CLIENT_URL must be configured");
@@ -19,6 +19,9 @@ const sendVerificationEmail = async ({ email, token }) => {
 
   const verificationUrl = new URL("/verify-email", CLIENT_URL);
   verificationUrl.searchParams.set("token", token);
+  if (accountType === "STUDENT" || accountType === "INSTRUCTOR") {
+    verificationUrl.searchParams.set("role", accountType);
+  }
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || SMTP_USER,

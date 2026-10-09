@@ -3,7 +3,11 @@ require("dotenv").config();
 const { PrismaClient } = require("@prisma/client");
 const { PrismaMariaDb } = require("@prisma/adapter-mariadb");
 
+let prismaClient;
+
 const getPrismaClient = () => {
+  if (prismaClient) return prismaClient;
+
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
@@ -20,7 +24,8 @@ const getPrismaClient = () => {
     database: url.pathname.replace("/", "") || "learnsphere",
   });
 
-  return new PrismaClient({ adapter });
+  prismaClient = new PrismaClient({ adapter });
+  return prismaClient;
 };
 
 module.exports = {

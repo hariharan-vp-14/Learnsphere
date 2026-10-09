@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const users = [];
+const instructorProfiles = new Set();
 const verificationEmails = [];
 let failEmailDelivery = false;
 const prismaMock = {
@@ -20,6 +21,7 @@ const prismaMock = {
       }
 
       const user = { id: users.length + 1, ...data };
+      if (data.instructorProfile?.create) instructorProfiles.add(user.id);
       users.push(user);
       return user;
     },
@@ -41,6 +43,14 @@ const prismaMock = {
       return { count: 1 };
     },
   },
+  instructorProfile: {
+    findUnique: async ({ where }) =>
+      instructorProfiles.has(where.userId) ? { id: where.userId, userId: where.userId } : null,
+    upsert: async ({ where }) => {
+      instructorProfiles.add(where.userId);
+      return { id: where.userId, userId: where.userId };
+    },
+  },
 };
 
 process.env.JWT_SECRET = "auth-tests-use-a-private-local-secret";
@@ -58,9 +68,9 @@ require.cache[emailServicePath] = {
   filename: emailServicePath,
   loaded: true,
   exports: {
-    sendVerificationEmail: async ({ email, token }) => {
+    sendVerificationEmail: async ({ email, token, accountType }) => {
       if (failEmailDelivery) throw new Error("SMTP credentials are unavailable");
-      verificationEmails.push({ email, token });
+      verificationEmails.push({ email, token, accountType });
     },
   },
 };
@@ -96,7 +106,6 @@ test("auth routes satisfy the registration and session checklist", async () => {
       name: "Test Student",
       email: "Student@Gmail.com",
       password: "Correct-Horse-42",
-      role: "ADMIN",
     }),
   });
   assert.equal(registerResponse.status, 201, "Register works");
@@ -106,6 +115,18 @@ test("auth routes satisfy the registration and session checklist", async () => {
   assert.equal("passwordHash" in registration.data, false);
   assert.equal(verificationEmails.length, 1, "Verification email is sent");
   assert.equal(verificationEmails[0].email, "student@gmail.com");
+  assert.equal(verificationEmails[0].accountType, "STUDENT");
+
+  const adminRoleRegistration = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Attempted Admin",
+      email: "attemptedadmin@gmail.com",
+      password: "Correct-Horse-42",
+      role: "ADMIN",
+    }),
+  });
+  assert.equal(adminRoleRegistration.status, 400, "Public registration cannot request admin role");
 
   const storedUser = users[0];
   assert.ok(
@@ -160,6 +181,93 @@ test("auth routes satisfy the registration and session checklist", async () => {
   });
   assert.equal(reusedVerificationResponse.status, 400, "Verification link is single-use");
 
+  const incorrectExistingPasswordRegistration = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Test Student",
+      email: "student@gmail.com",
+      password: "Incorrect-Horse-42",
+      role: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(incorrectExistingPasswordRegistration.status, 401);
+  assert.equal(instructorProfiles.has(storedUser.id), false, "Wrong password cannot grant teacher access");
+
+  const teacherRegistrationResponse = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Test Student",
+      email: "Student@Gmail.com",
+      password: "Correct-Horse-42",
+      role: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(teacherRegistrationResponse.status, 200, "Teacher access can be added to the same account");
+  const teacherRegistration = await teacherRegistrationResponse.json();
+  assert.equal(teacherRegistration.data.id, storedUser.id, "Teacher access uses the existing account");
+  assert.equal(teacherRegistration.data.role, "STUDENT", "Primary account role remains unchanged");
+  assert.deepEqual(teacherRegistration.data.roles, ["STUDENT", "INSTRUCTOR"]);
+  assert.equal(teacherRegistration.data.emailVerified, true, "Existing verified email remains verified");
+  assert.equal(instructorProfiles.has(storedUser.id), true, "Instructor capability is recorded separately");
+
+  const registeredTeacherLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "student@gmail.com",
+      password: "Correct-Horse-42",
+      expectedRole: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(registeredTeacherLogin.status, 200, "The existing verified account can sign in as a teacher");
+  const dualRoleLogin = await registeredTeacherLogin.json();
+  assert.equal(dualRoleLogin.data.role, "STUDENT");
+  assert.deepEqual(dualRoleLogin.data.roles, ["STUDENT", "INSTRUCTOR"]);
+
+  const newTeacherRegistrationResponse = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "New Teacher",
+      email: "newteacher@gmail.com",
+      password: "New-Teacher-42",
+      role: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(newTeacherRegistrationResponse.status, 201);
+  const newTeacherRegistration = await newTeacherRegistrationResponse.json();
+  assert.equal(newTeacherRegistration.data.role, "STUDENT");
+  assert.deepEqual(newTeacherRegistration.data.roles, ["STUDENT", "INSTRUCTOR"]);
+  assert.equal(newTeacherRegistration.data.emailVerified, false);
+  const newTeacher = users.find((user) => user.email === "newteacher@gmail.com");
+  assert.equal(instructorProfiles.has(newTeacher.id), true);
+  assert.equal(verificationEmails.at(-1).accountType, "INSTRUCTOR");
+
+  const unverifiedNewTeacherLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "newteacher@gmail.com",
+      password: "New-Teacher-42",
+      expectedRole: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(unverifiedNewTeacherLogin.status, 403);
+
+  const verifyNewTeacherResponse = await request("/api/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ token: verificationEmails.at(-1).token }),
+  });
+  assert.equal(verifyNewTeacherResponse.status, 200);
+  assert.ok(newTeacher.emailVerifiedAt);
+
+  const verifiedNewTeacherLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "newteacher@gmail.com",
+      password: "New-Teacher-42",
+      expectedRole: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(verifiedNewTeacherLogin.status, 200);
+
   const nonGmailRegisterResponse = await request("/api/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -213,6 +321,38 @@ test("auth routes satisfy the registration and session checklist", async () => {
   const sessionCookie = cookie.split(";", 1)[0];
   const login = await loginResponse.json();
   assert.equal("token" in login.data, false);
+  assert.equal(login.data.role, "STUDENT");
+
+  const teacher = {
+    id: users.length + 1,
+    name: "Second Teacher",
+    email: "secondteacher@gmail.com",
+    passwordHash: await bcrypt.hash("Second-Teacher-42", 4),
+    role: "INSTRUCTOR",
+    emailVerifiedAt: new Date(),
+  };
+  users.push(teacher);
+
+  const existingTeacherStudentLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: teacher.email,
+      password: "Second-Teacher-42",
+      expectedRole: "STUDENT",
+    }),
+  });
+  assert.equal(existingTeacherStudentLogin.status, 200, "Teacher accounts can also use student sign-in");
+
+  const teacherLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: teacher.email,
+      password: "Second-Teacher-42",
+      expectedRole: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(teacherLogin.status, 200, "Provisioned instructor can use teacher sign-in");
+  assert.ok((await teacherLogin.json()).data.roles.includes("INSTRUCTOR"));
 
   const protectedWithCookie = await request("/api/auth/protected", {
     headers: { Cookie: sessionCookie },

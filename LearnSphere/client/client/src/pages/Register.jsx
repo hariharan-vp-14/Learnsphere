@@ -1,11 +1,16 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getApiErrorMessage } from '../api/axios'
+import AccountTypeChooser from '../components/AccountTypeChooser'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
 
 function Register() {
-  const { register } = useAuth()
+  const { register, user } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedRole = searchParams.get('role')
+  const selectedRole = ['STUDENT', 'INSTRUCTOR'].includes(requestedRole) ? requestedRole : null
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -22,8 +27,22 @@ function Register() {
     setMessage('')
 
     try {
-      const result = await register(form)
-      setMessage(result.message)
+      const result = await register({ ...form, role: selectedRole })
+      if (result.data?.emailVerified) {
+        if (user?.id === result.data.id) {
+          navigate(selectedRole === 'INSTRUCTOR' ? '/instructor/courses' : '/dashboard', { replace: true })
+        } else {
+          navigate(`/login?role=${selectedRole}&registered=1`, {
+            replace: true,
+            state: { message: result.message },
+          })
+        }
+      } else {
+        navigate(`/verification-pending?role=${selectedRole}`, {
+          replace: true,
+          state: { email: form.email },
+        })
+      }
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
     } finally {
@@ -33,24 +52,34 @@ function Register() {
 
   return (
     <AuthLayout mode="register">
+      {!selectedRole ? (
+        <AccountTypeChooser mode="register" />
+      ) : (
         <section
           className="rounded-[26px] border border-white/90 bg-white/95 p-6 shadow-[0_28px_80px_rgba(55,66,35,0.14)] backdrop-blur sm:p-9"
           aria-labelledby="auth-title"
         >
           <div className="mb-7 grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100/90 p-1.5" aria-label="Authentication options">
-            <Link className="grid min-h-11 place-items-center rounded-[9px] text-[13px] font-semibold text-slate-600 no-underline transition hover:text-[#445523]" to="/login">
+            <Link className="grid min-h-11 place-items-center rounded-[9px] text-[13px] font-semibold text-slate-600 no-underline transition hover:text-[#445523]" to={`/login?role=${selectedRole}`}>
               Sign in
             </Link>
-            <Link className="grid min-h-11 place-items-center rounded-[9px] bg-white text-[13px] font-bold text-[#29331d] no-underline shadow-sm" to="/register" aria-current="page">
+            <Link className="grid min-h-11 place-items-center rounded-[9px] bg-white text-[13px] font-bold text-[#29331d] no-underline shadow-sm" to={`/register?role=${selectedRole}`} aria-current="page">
               Create account
             </Link>
           </div>
-          <p className="mb-2 mt-0 text-[10px] font-extrabold tracking-[1.7px] text-[#445523]">GET STARTED</p>
+          <Link className="mb-5 inline-flex text-xs font-bold text-[#4f6125] no-underline hover:text-[#29331d]" to="/register">
+            ← Change account type
+          </Link>
+          <p className="mb-2 mt-0 text-[10px] font-extrabold tracking-[1.7px] text-[#445523]">
+            {selectedRole === 'INSTRUCTOR' ? 'TEACH ON LEARNSPHERE' : 'GET STARTED'}
+          </p>
           <h2 className="m-0 text-[26px] font-extrabold tracking-[-0.8px] text-[#27301e]" id="auth-title">
-            Create your account
+            {selectedRole === 'INSTRUCTOR' ? 'Create your teacher account' : 'Create your student account'}
           </h2>
           <p className="mb-6 mt-2 text-[13px] leading-[1.6] text-slate-500">
-            We’ll send a verification link to your Gmail inbox.
+            {selectedRole === 'INSTRUCTOR'
+              ? 'We’ll send a verification link to your Gmail inbox. If you already have a student account, use its email and password to add teacher access to that same account.'
+              : 'We’ll send a verification link to your Gmail inbox before you can sign in.'}
           </p>
 
           <form className="grid gap-4" onSubmit={submitForm}>
@@ -100,11 +129,17 @@ function Register() {
               className="mt-1 inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#465820] to-[#617832] px-4 text-sm font-bold text-white shadow-[0_10px_22px_rgba(63,77,36,0.24)] transition hover:-translate-y-0.5 hover:from-[#354418] hover:to-[#4f6125] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7] disabled:cursor-wait disabled:opacity-70"
               disabled={busy}
             >
-              {busy ? 'Please wait…' : 'Create account'}
+              {busy ? 'Please wait…' : selectedRole === 'INSTRUCTOR' ? 'Create teacher account' : 'Create student account'}
               {!busy && <span aria-hidden="true">→</span>}
             </button>
           </form>
+          {selectedRole === 'INSTRUCTOR' && (
+            <p className="mb-0 mt-4 text-center text-xs leading-5 text-[#535b4a]">
+              After email verification, sign in as a teacher to create and publish courses.
+            </p>
+          )}
         </section>
+      )}
     </AuthLayout>
   )
 }

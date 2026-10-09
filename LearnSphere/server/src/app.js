@@ -4,6 +4,10 @@ const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 
 const authRoutes = require("./routes/auth.routes");
+const courseRoutes = require("./routes/course.routes");
+const curriculumRoutes = require("./routes/curriculum.routes");
+const enrollmentRoutes = require("./routes/enrollment.routes");
+const instructorRoutes = require("./routes/instructor.routes");
 
 const app = express();
 const clientOrigin = process.env.CLIENT_URL
@@ -29,5 +33,9 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/courses", courseRoutes);
+app.use("/api/curriculum", curriculumRoutes);
+app.use("/api/enrollments", enrollmentRoutes);
+app.use("/api/instructor", instructorRoutes);
 
 module.exports = app;

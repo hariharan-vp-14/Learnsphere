@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "create:instructor": "node scripts/create-instructor.js"
   },
   "keywords": [],
   "author": "",

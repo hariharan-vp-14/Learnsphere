@@ -32,13 +32,20 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const { data } = await api.post('/login', credentials)
-    setUser(data.data)
+    setUser({ ...data.data, emailVerified: true })
     setAuthError('')
     return data
   }, [])
 
   const register = useCallback(async (details) => {
     const { data } = await api.post('/register', details)
+    if (data.data?.roles) {
+      setUser((current) => (
+        current?.id === data.data.id
+          ? { ...current, ...data.data }
+          : current
+      ))
+    }
     return data
   }, [])
 

@@ -1,41 +1,27 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { getApiErrorMessage } from '../api/axios'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import CourseHeader from '../components/CourseHeader'
 
 function StudentDashboard() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function signOut() {
-    setBusy(true)
-    setError('')
-    try {
-      await logout()
-      navigate('/login', { replace: true })
-    } catch (requestError) {
-      setError(getApiErrorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { user } = useAuth()
+  const userRoles = user.roles || [user.role]
 
   return (
     <main className="mx-auto min-h-screen max-w-[1280px] px-[18px] sm:px-[26px] lg:px-16">
-      <header className="flex min-h-[70px] items-center justify-between border-b border-[#e8e9ed] sm:min-h-[88px]">
-        <Link className="text-[22px] font-extrabold tracking-[-0.8px] text-[#27301e] no-underline" to="/">
-          LearnSphere<span className="text-[#667c32]">.</span>
+      <CourseHeader />
+      <nav className="flex flex-wrap gap-3 border-b border-[#343d24]/10 py-4" aria-label="Student navigation">
+        <Link className="rounded-xl bg-[#edf1e3] px-4 py-2.5 text-sm font-bold text-[#445523] no-underline" to="/courses">
+          Browse courses
         </Link>
-        <button
-          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#e4e5ec] bg-white px-[17px] text-[13px] font-semibold text-[#454a63] disabled:cursor-wait disabled:opacity-70"
-          disabled={busy}
-          onClick={signOut}
-        >
-          {busy ? 'Signing out…' : 'Sign out'}
-        </button>
-      </header>
+        <Link className="rounded-xl bg-[#edf1e3] px-4 py-2.5 text-sm font-bold text-[#445523] no-underline" to="/learning">
+          My learning
+        </Link>
+        {userRoles.some((role) => ['INSTRUCTOR', 'ADMIN'].includes(role)) && (
+          <Link className="rounded-xl bg-[#edf1e3] px-4 py-2.5 text-sm font-bold text-[#445523] no-underline" to="/instructor/courses">
+            Instructor dashboard
+          </Link>
+        )}
+      </nav>
       <section className="mx-auto my-[12vh] max-w-[600px] rounded-[18px] border border-[#e8e9ed] bg-white px-[30px] py-[60px] text-center shadow-[0_24px_70px_rgba(34,39,75,0.08)]">
         <div className="mx-auto mb-[22px] grid size-[54px] place-items-center rounded-full bg-[#e8eddc] text-[25px] text-[#445523]" aria-hidden="true">
           ✓
@@ -48,9 +34,8 @@ function StudentDashboard() {
           You’re signed in to LearnSphere as {user.email}.
         </p>
         <span className="mt-[22px] inline-block rounded-full bg-[#e8eddc] px-3 py-1.5 text-[11px] font-bold tracking-[0.5px] text-[#445523]">
-          {user.role}
+          {userRoles.join(' · ')}
         </span>
-        {error && <p className="mt-4 rounded-[7px] bg-[#fff1f0] px-3 py-2.5 text-xs leading-[1.5] text-[#a53731]" role="alert">{error}</p>}
       </section>
     </main>
   )
