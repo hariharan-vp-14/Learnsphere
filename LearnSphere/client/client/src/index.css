@@ -41,6 +41,10 @@
   font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
+.auth-page {
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+}
+
 .intro-brand,
 .intro-sign-in,
 .intro-eyebrow,
@@ -66,6 +70,21 @@
 
 .intro-eyebrow {
   letter-spacing: 0.13em;
+}
+
+.auth-card-heading {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: -0.06em;
+  line-height: 1.08;
+}
+
+.auth-option-title {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  letter-spacing: -0.025em;
+}
+
+.auth-card-copy {
+  letter-spacing: 0.005em;
 }
 
 .intro-scene {

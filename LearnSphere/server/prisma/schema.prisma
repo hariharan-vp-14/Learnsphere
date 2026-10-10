@@ -12,6 +12,12 @@ enum UserRole {
   ADMIN
 }
 
+enum InstructorApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum CourseStatus {
   DRAFT
   PUBLISHED
@@ -63,21 +69,38 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  courses      Course[]      @relation("InstructorCourses")
+  courses          Course[]          @relation("InstructorCourses")
+  studentProfile   StudentProfile?
   instructorProfile InstructorProfile?
-  enrollments  Enrollment[]
-  lessonProgress LessonProgress[]
-  attempts     Attempt[]
-  orders       Order[]
-  certificates Certificate[]
+  enrollments      Enrollment[]
+  lessonProgress   LessonProgress[]
+  attempts         Attempt[]
+  orders           Order[]
+  certificates     Certificate[]
+}
+
+model StudentProfile {
+  id                           Int       @id @default(autoincrement())
+  userId                       Int       @unique
+  user                         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningGoals                String?   @db.Text
+  preferredLearningCategories  Json?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 }
 
 model InstructorProfile {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    Int                         @id @default(autoincrement())
+  userId                Int                         @unique
+  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationStatus     InstructorApplicationStatus @default(APPROVED)
+  professionalBio       String?                     @db.Text
+  expertise             String?                     @db.Text
+  qualifications        String?                     @db.Text
+  profileImageUrl       String?
+  teachingInterests     String?                     @db.Text
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
 }
 
 model Course {

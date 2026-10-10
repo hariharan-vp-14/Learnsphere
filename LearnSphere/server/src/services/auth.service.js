@@ -72,23 +72,29 @@ const toPublicUser = ({ id, name, email, role }, roles = [role]) => ({
   roles,
 });
 
-const getUserRoles = async (user) => {
+const getUserRoles = async (user, instructorProfile) => {
   if (user.role === "ADMIN") return ["ADMIN", "INSTRUCTOR"];
   if (user.role === "INSTRUCTOR") return ["STUDENT", "INSTRUCTOR"];
 
-  const instructorProfile = await prisma.instructorProfile.findUnique({
-    where: { userId: user.id },
-    select: { id: true },
-  });
-  return instructorProfile ? ["STUDENT", "INSTRUCTOR"] : ["STUDENT"];
+  const profile = instructorProfile === undefined
+    ? await prisma.instructorProfile.findUnique({
+      where: { userId: user.id },
+      select: { applicationStatus: true },
+    })
+    : instructorProfile;
+  return profile?.applicationStatus === "APPROVED"
+    ? ["STUDENT", "INSTRUCTOR"]
+    : ["STUDENT"];
 };
 
 const register = async (input) => {
-  const { name, email, password, role } =
+  const { name, email, password } =
     input && typeof input === "object" ? input : {};
-
-  if (role !== undefined && !["STUDENT", "INSTRUCTOR"].includes(role)) {
-    throw createAuthError("Account type must be STUDENT or INSTRUCTOR", 400);
+  if (input?.role !== undefined) {
+    throw createAuthError(
+      "Public registration does not accept a role. Submit a teacher application to request instructor access.",
+      400
+    );
   }
 
   if (typeof name !== "string" || !name.trim() || name.trim().length > 191) {
@@ -100,66 +106,166 @@ const register = async (input) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  if (role === "INSTRUCTOR") {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-
-    if (existingUser) {
-      if (!(await bcrypt.compare(password, existingUser.passwordHash))) {
-        throw createAuthError("Invalid email or password for the existing account", 401);
-      }
-
-      if (existingUser.role === "ADMIN") {
-        throw createAuthError("This account already has administrator access", 409);
-      }
-
-      const existingProfile = await prisma.instructorProfile.findUnique({
-        where: { userId: existingUser.id },
-        select: { id: true },
-      });
-      await prisma.instructorProfile.upsert({
-        where: { userId: existingUser.id },
-        create: { userId: existingUser.id },
-        update: {},
-      });
-      if (!existingUser.emailVerifiedAt) await issueEmailVerification(existingUser, "INSTRUCTOR");
-
-      return {
-        ...toPublicUser(existingUser, ["STUDENT", "INSTRUCTOR"]),
-        emailVerified: Boolean(existingUser.emailVerifiedAt),
-        teacherAccessAdded: !existingProfile,
-        existingAccount: true,
-      };
-    }
-  }
-
   try {
-    const user = await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash,
-        role: "STUDENT",
-        emailVerifiedAt: null,
-        ...(role === "INSTRUCTOR" ? { instructorProfile: { create: {} } } : {}),
-      },
+    const user = await prisma.$transaction(async (transaction) => {
+      const createdUser = await transaction.user.create({
+        data: {
+          name: name.trim(),
+          email: normalizedEmail,
+          passwordHash,
+          role: "STUDENT",
+          emailVerifiedAt: null,
+        },
+      });
+      await transaction.studentProfile.create({
+        data: { userId: createdUser.id },
+      });
+      return createdUser;
     });
 
-    await issueEmailVerification(user, role || "STUDENT");
+    await issueEmailVerification(user, "STUDENT");
     return {
-      ...toPublicUser(
-        user,
-        role === "INSTRUCTOR" ? ["STUDENT", "INSTRUCTOR"] : ["STUDENT"]
-      ),
+      ...toPublicUser(user, ["STUDENT"]),
       emailVerified: false,
-      ...(role === "INSTRUCTOR" ? { teacherAccessAdded: true } : {}),
     };
   } catch (error) {
     if (error.code === "P2002") {
       throw createAuthError("An account with this email already exists", 409);
     }
 
+    throw error;
+  }
+};
+
+const readOptionalText = (value, field, maxLength = 4000) => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || value.trim().length > maxLength) {
+    throw createAuthError(`${field} must be text no longer than ${maxLength} characters`, 400);
+  }
+  return value.trim() || null;
+};
+
+const registerTeacherApplication = async (input) => {
+  const details = input && typeof input === "object" ? input : {};
+  const { name, email, password } = details;
+  if (details.role !== undefined) {
+    throw createAuthError(
+      "Teacher access is granted only after an administrator approves your application.",
+      400
+    );
+  }
+  if (typeof name !== "string" || !name.trim() || name.trim().length > 191) {
+    throw createAuthError("Name is required and must be no longer than 191 characters", 400);
+  }
+  validateCredentials({ email, password });
+  const normalizedEmail = normalizeEmail(email);
+  const profileData = {
+    professionalBio: readOptionalText(details.professionalBio, "Professional bio"),
+    expertise: readOptionalText(details.expertise, "Expertise"),
+    qualifications: readOptionalText(details.qualifications, "Qualifications"),
+    teachingInterests: readOptionalText(details.teachingInterests, "Teaching interests"),
+  };
+  const existingUser = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+
+  if (existingUser) {
+    if (!(await bcrypt.compare(password, existingUser.passwordHash))) {
+      throw createAuthError("Invalid email or password for the existing account", 401);
+    }
+    if (existingUser.role === "ADMIN") {
+      throw createAuthError("This account already has administrator access", 409);
+    }
+
+    const existingProfile = await prisma.instructorProfile.findUnique({
+      where: { userId: existingUser.id },
+      select: { id: true, applicationStatus: true },
+    });
+    if (
+      existingUser.role === "INSTRUCTOR"
+      || existingProfile?.applicationStatus === "APPROVED"
+    ) {
+      if (!existingUser.emailVerifiedAt) {
+        await issueEmailVerification(existingUser, "INSTRUCTOR");
+      }
+      return {
+        ...toPublicUser(existingUser, await getUserRoles(existingUser, existingProfile)),
+        emailVerified: Boolean(existingUser.emailVerifiedAt),
+        applicationStatus: "APPROVED",
+        existingAccount: true,
+      };
+    }
+
+    const profile = await prisma.$transaction(async (transaction) => {
+      const studentProfile = await transaction.studentProfile.findUnique({
+        where: { userId: existingUser.id },
+        select: { id: true },
+      });
+      if (!studentProfile && existingUser.role === "STUDENT") {
+        await transaction.studentProfile.create({
+          data: { userId: existingUser.id },
+        });
+      }
+      return transaction.instructorProfile.upsert({
+        where: { userId: existingUser.id },
+        create: {
+          userId: existingUser.id,
+          applicationStatus: "PENDING",
+          ...profileData,
+        },
+        update: {
+          applicationStatus: "PENDING",
+          ...profileData,
+        },
+      });
+    });
+
+    if (!existingUser.emailVerifiedAt) {
+      await issueEmailVerification(existingUser, "TEACHER_APPLICATION");
+    }
+    return {
+      ...toPublicUser(existingUser, ["STUDENT"]),
+      emailVerified: Boolean(existingUser.emailVerifiedAt),
+      applicationStatus: profile.applicationStatus,
+      existingAccount: true,
+    };
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  try {
+    const { user, profile } = await prisma.$transaction(async (transaction) => {
+      const createdUser = await transaction.user.create({
+        data: {
+          name: name.trim(),
+          email: normalizedEmail,
+          passwordHash,
+          role: "STUDENT",
+          emailVerifiedAt: null,
+        },
+      });
+      await transaction.studentProfile.create({
+        data: { userId: createdUser.id },
+      });
+      const createdProfile = await transaction.instructorProfile.create({
+        data: {
+          userId: createdUser.id,
+          applicationStatus: "PENDING",
+          ...profileData,
+        },
+      });
+      return { user: createdUser, profile: createdProfile };
+    });
+
+    await issueEmailVerification(user, "TEACHER_APPLICATION");
+    return {
+      ...toPublicUser(user, ["STUDENT"]),
+      emailVerified: false,
+      applicationStatus: profile.applicationStatus,
+    };
+  } catch (error) {
+    if (error.code === "P2002") {
+      throw createAuthError("An account with this email already exists", 409);
+    }
     throw error;
   }
 };
@@ -191,12 +297,29 @@ const login = async (input) => {
     throw createAuthError("Verify your email before signing in", 403);
   }
 
-  const roles = await getUserRoles(user);
+  const instructorProfile = await prisma.instructorProfile.findUnique({
+    where: { userId: user.id },
+    select: { applicationStatus: true },
+  });
+  if (
+    expectedRole === "INSTRUCTOR"
+    && instructorProfile?.applicationStatus === "PENDING"
+  ) {
+    throw createAuthError("Your teacher application is awaiting administrator approval", 403);
+  }
+  if (
+    expectedRole === "INSTRUCTOR"
+    && instructorProfile?.applicationStatus === "REJECTED"
+  ) {
+    throw createAuthError("Your teacher application was not approved", 403);
+  }
+
+  const roles = await getUserRoles(user, instructorProfile);
   const roleMatches = expectedRole === undefined || roles.includes(expectedRole);
   if (!roleMatches) {
     throw createAuthError(
       expectedRole === "INSTRUCTOR"
-        ? "This account is not a teacher account. Choose Student sign in or use a provisioned teacher account."
+        ? "This account is not an approved teacher account. Submit a teacher application or use Student sign in."
         : "This account is not a student account. Choose Teacher sign in.",
       403
     );
@@ -220,7 +343,7 @@ const login = async (input) => {
 
   return {
     token,
-    user: toPublicUser(user, roles),
+    user: await getProfile(user.id),
   };
 };
 
@@ -258,7 +381,20 @@ const resendVerification = async (input) => {
   });
 
   if (user && !user.emailVerifiedAt) {
-    await issueEmailVerification(user);
+    const instructorProfile = await prisma.instructorProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true, applicationStatus: true },
+    });
+    const isPendingTeacherApplication =
+      instructorProfile?.applicationStatus === "PENDING";
+    await issueEmailVerification(
+      user,
+      isPendingTeacherApplication
+        ? "TEACHER_APPLICATION"
+        : user.role === "INSTRUCTOR" || instructorProfile
+          ? "INSTRUCTOR"
+          : "STUDENT"
+    );
   }
 
   return { message: "If an unverified account exists, a verification email has been sent." };
@@ -267,20 +403,45 @@ const resendVerification = async (input) => {
 const getProfile = async (id) => {
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, role: true, emailVerifiedAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      emailVerifiedAt: true,
+      studentProfile: {
+        select: { learningGoals: true, preferredLearningCategories: true },
+      },
+      instructorProfile: {
+        select: {
+          applicationStatus: true,
+          professionalBio: true,
+          expertise: true,
+          qualifications: true,
+          profileImageUrl: true,
+          teachingInterests: true,
+        },
+      },
+    },
   });
 
   if (!user) return null;
-  const { emailVerifiedAt, ...profile } = user;
+  const profile = { ...user };
+  delete profile.passwordHash;
+  delete profile.emailVerificationTokenHash;
+  delete profile.emailVerificationTokenExpiresAt;
+  const { emailVerifiedAt, instructorProfile, ...publicProfile } = profile;
   return {
-    ...profile,
-    roles: await getUserRoles(user),
+    ...publicProfile,
+    roles: await getUserRoles(user, instructorProfile),
+    instructorProfile,
     emailVerified: Boolean(emailVerifiedAt),
   };
 };
 
 module.exports = {
   register,
+  registerTeacherApplication,
   login,
   verifyEmail,
   resendVerification,

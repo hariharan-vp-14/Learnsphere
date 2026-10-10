@@ -25,15 +25,28 @@ const register = async (req, res) => {
     const user = await authService.register(req.body);
     return res.status(user.existingAccount ? 200 : 201).json({
       success: true,
-      message: user.emailVerified
-        ? user.teacherAccessAdded
-          ? "Teacher access added to your existing account. You can sign in as a teacher."
-          : "Teacher access is already enabled for this account."
-        : "Account created. Check your email to verify your account before signing in.",
+      message: "Account created. Check your email to verify your account before signing in.",
       data: user,
     });
   } catch (error) {
     return respondWithAuthError(res, error, "Unable to register user");
+  }
+};
+
+const registerTeacherApplication = async (req, res) => {
+  try {
+    const application = await authService.registerTeacherApplication(req.body);
+    return res.status(application.existingAccount ? 200 : 201).json({
+      success: true,
+      message: application.applicationStatus === "APPROVED"
+        ? "Teacher access is already enabled for this account."
+        : application.emailVerified
+          ? "Teacher application submitted. Administrator approval is required before you can teach."
+          : "Teacher application submitted. Verify your email before it can be reviewed.",
+      data: application,
+    });
+  } catch (error) {
+    return respondWithAuthError(res, error, "Unable to submit teacher application");
   }
 };
 
@@ -105,6 +118,7 @@ const logout = (req, res) => {
 
 module.exports = {
   register,
+  registerTeacherApplication,
   verifyEmail,
   resendVerification,
   login,

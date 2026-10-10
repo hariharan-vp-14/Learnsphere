@@ -81,7 +81,19 @@ const prismaMock = {
     ],
   },
   instructorProfile: {
-    findUnique: async () => null,
+    findUnique: async ({ where }) =>
+      where.userId === 10
+        ? { id: 10, applicationStatus: "APPROVED" }
+        : null,
+  },
+  user: {
+    findUnique: async ({ where }) => ({
+      id: where.id,
+      name: `User ${where.id}`,
+      email: `user${where.id}@gmail.com`,
+      role: "STUDENT",
+      emailVerifiedAt: new Date(),
+    }),
   },
   course: {
     findMany: async ({ where = {}, orderBy, take }) => {
@@ -159,7 +171,7 @@ const request = async (path, { id = 10, role = "INSTRUCTOR" } = {}) =>
   });
 
 test("instructor dashboard and student list only include owned course records", async () => {
-  assert.equal((await request("/api/instructor/dashboard", { role: "STUDENT" })).status, 403);
+  assert.equal((await request("/api/instructor/dashboard", { id: 30, role: "STUDENT" })).status, 403);
 
   const dashboardResponse = await request("/api/instructor/dashboard");
   assert.equal(dashboardResponse.status, 200);

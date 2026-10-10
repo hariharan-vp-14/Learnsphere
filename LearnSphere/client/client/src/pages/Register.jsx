@@ -4,14 +4,21 @@ import { getApiErrorMessage } from '../api/axios'
 import AccountTypeChooser from '../components/AccountTypeChooser'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
+import { getDashboardPath } from '../utils/userRoutes'
 
 function Register() {
-  const { register, user } = useAuth()
+  const { register, applyForInstructor, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const requestedRole = searchParams.get('role')
   const selectedRole = ['STUDENT', 'INSTRUCTOR'].includes(requestedRole) ? requestedRole : null
-  const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    professionalBio: '',
+    expertise: '',
+  })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,10 +34,21 @@ function Register() {
     setMessage('')
 
     try {
-      const result = await register({ ...form, role: selectedRole })
-      if (result.data?.emailVerified) {
+      const result = selectedRole === 'INSTRUCTOR'
+        ? await applyForInstructor(form)
+        : await register({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+        })
+      if (selectedRole === 'INSTRUCTOR' && result.data?.applicationStatus !== 'APPROVED') {
+        navigate(`/verification-pending?role=INSTRUCTOR&application=1${result.data?.emailVerified ? '&verified=1' : ''}`, {
+          replace: true,
+          state: { email: form.email },
+        })
+      } else if (result.data?.emailVerified) {
         if (user?.id === result.data.id) {
-          navigate(selectedRole === 'INSTRUCTOR' ? '/instructor/courses' : '/dashboard', { replace: true })
+          navigate(getDashboardPath(user, selectedRole), { replace: true })
         } else {
           navigate(`/login?role=${selectedRole}&registered=1`, {
             replace: true,
@@ -74,11 +92,11 @@ function Register() {
             {selectedRole === 'INSTRUCTOR' ? 'TEACH ON LEARNSPHERE' : 'GET STARTED'}
           </p>
           <h2 className="m-0 text-[26px] font-extrabold tracking-[-0.8px] text-[#27301e]" id="auth-title">
-            {selectedRole === 'INSTRUCTOR' ? 'Create your teacher account' : 'Create your student account'}
+            {selectedRole === 'INSTRUCTOR' ? 'Apply to teach on LearnSphere' : 'Create your student account'}
           </h2>
           <p className="mb-6 mt-2 text-[13px] leading-[1.6] text-slate-500">
             {selectedRole === 'INSTRUCTOR'
-              ? 'We’ll send a verification link to your Gmail inbox. If you already have a student account, use its email and password to add teacher access to that same account.'
+              ? 'Use your existing LearnSphere email and password, or create them now. Verify your email, then an administrator will review your teacher application.'
               : 'We’ll send a verification link to your Gmail inbox before you can sign in.'}
           </p>
 
@@ -97,7 +115,7 @@ function Register() {
               />
             </label>
             <label className="grid gap-2 text-xs font-bold text-slate-700">
-              Gmail address
+              {selectedRole === 'INSTRUCTOR' ? 'Account email' : 'Gmail address'}
               <input
                 className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
                 autoComplete="email"
@@ -109,6 +127,32 @@ function Register() {
                 value={form.email}
               />
             </label>
+            {selectedRole === 'INSTRUCTOR' && (
+              <>
+                <label className="grid gap-2 text-xs font-bold text-slate-700">
+                  Teaching bio <span className="font-normal text-slate-500">(optional)</span>
+                  <textarea
+                    className="min-h-24 w-full resize-y rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
+                    maxLength={4000}
+                    name="professionalBio"
+                    onChange={updateForm}
+                    placeholder="Share a little about your teaching experience"
+                    value={form.professionalBio}
+                  />
+                </label>
+                <label className="grid gap-2 text-xs font-bold text-slate-700">
+                  Expertise <span className="font-normal text-slate-500">(optional)</span>
+                  <input
+                    className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
+                    maxLength={4000}
+                    name="expertise"
+                    onChange={updateForm}
+                    placeholder="Topics you teach"
+                    value={form.expertise}
+                  />
+                </label>
+              </>
+            )}
             <label className="grid gap-2 text-xs font-bold text-slate-700">
               Password
               <input
@@ -129,13 +173,13 @@ function Register() {
               className="mt-1 inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#465820] to-[#617832] px-4 text-sm font-bold text-white shadow-[0_10px_22px_rgba(63,77,36,0.24)] transition hover:-translate-y-0.5 hover:from-[#354418] hover:to-[#4f6125] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7] disabled:cursor-wait disabled:opacity-70"
               disabled={busy}
             >
-              {busy ? 'Please wait…' : selectedRole === 'INSTRUCTOR' ? 'Create teacher account' : 'Create student account'}
+              {busy ? 'Please wait…' : selectedRole === 'INSTRUCTOR' ? 'Submit teacher application' : 'Create student account'}
               {!busy && <span aria-hidden="true">→</span>}
             </button>
           </form>
           {selectedRole === 'INSTRUCTOR' && (
             <p className="mb-0 mt-4 text-center text-xs leading-5 text-[#535b4a]">
-              After email verification, sign in as a teacher to create and publish courses.
+              Your application will be reviewed after email verification. Teacher tools unlock only after approval.
             </p>
           )}
         </section>

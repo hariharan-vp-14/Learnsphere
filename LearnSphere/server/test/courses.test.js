@@ -66,7 +66,19 @@ const prismaMock = {
     },
   },
   instructorProfile: {
-    findUnique: async () => null,
+    findUnique: async ({ where }) =>
+      [10, 11].includes(where.userId)
+        ? { id: where.userId, applicationStatus: "APPROVED" }
+        : null,
+  },
+  user: {
+    findUnique: async ({ where }) => ({
+      id: where.id,
+      name: `User ${where.id}`,
+      email: `user${where.id}@gmail.com`,
+      role: "STUDENT",
+      emailVerifiedAt: new Date(),
+    }),
   },
 };
 
@@ -135,6 +147,7 @@ test("public catalog only exposes published courses and instructor actions are r
 
   const invalidInstructorCreate = await request("/api/courses", {
     role: "INSTRUCTOR",
+    id: 10,
     method: "POST",
     body: JSON.stringify({ title: "  ", description: "Learn AI", price: -1 }),
   });

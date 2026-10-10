@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const authService = require("../services/auth.service");
 
-const protect = (req, res, next) => {
+const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   const bearerToken =
     authHeader && authHeader.startsWith("Bearer ")
@@ -22,23 +23,38 @@ const protect = (req, res, next) => {
     });
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded.emailVerified !== true) {
-      return res.status(403).json({
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!Number.isSafeInteger(decoded.id) || decoded.id < 1) {
+      return res.status(401).json({
         success: false,
-        message: "Email verification is required",
+        message: "Invalid or expired token",
       });
     }
-
-    req.user = decoded;
-    return next();
   } catch (error) {
     return res.status(401).json({
       success: false,
       message: "Invalid or expired token",
     });
   }
+
+  const user = await authService.getProfile(decoded.id);
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
+  }
+  if (!user.emailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: "Email verification is required",
+    });
+  }
+
+  req.user = user;
+  return next();
 };
 
 module.exports = {

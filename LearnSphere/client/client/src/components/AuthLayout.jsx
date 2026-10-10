@@ -5,12 +5,12 @@ function AuthLayout({ children, mode }) {
   const isRegister = mode === 'register'
 
   return (
-    <main className="relative mx-auto flex min-h-screen max-w-[1440px] flex-col overflow-hidden px-5 sm:px-8 lg:px-14">
+    <main className="auth-page relative mx-auto flex min-h-screen max-w-[1440px] flex-col overflow-hidden px-5 sm:px-8 lg:px-14">
       <div className="pointer-events-none absolute -left-40 top-32 size-[420px] rounded-full bg-[#dfe7c8]/60 blur-3xl" aria-hidden="true" />
       <div className="pointer-events-none absolute -right-40 bottom-10 size-[420px] rounded-full bg-[#e9ecd9]/75 blur-3xl" aria-hidden="true" />
 
       <header className="relative z-10 flex min-h-[76px] items-center justify-between border-b border-[#343d24]/10 sm:min-h-[88px]">
-        <Link className="text-[22px] font-extrabold tracking-[-0.9px] text-[#27301e] no-underline" to="/">
+        <Link className="intro-brand text-[22px] font-extrabold tracking-[-0.9px] text-[#27301e] no-underline" to="/">
           LearnSphere<span className="text-[#667c32]">.</span>
         </Link>
         <div className="hidden items-center gap-2 text-[13px] font-medium text-slate-500 sm:flex">
@@ -21,13 +21,13 @@ function AuthLayout({ children, mode }) {
 
       <section className="relative z-10 mx-auto grid w-full max-w-[1180px] flex-1 grid-cols-1 items-center gap-10 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)] lg:gap-16 lg:py-12">
         <div className="mx-auto w-full max-w-[580px] lg:mx-0">
-          <p className="mb-4 mt-0 inline-flex items-center gap-2 rounded-full border border-[#d4ddbd] bg-white/80 px-3 py-1.5 text-[10px] font-extrabold tracking-[1.6px] text-[#445523] shadow-sm">
+          <p className="intro-eyebrow mb-4 mt-0 inline-flex items-center gap-2 rounded-full border border-[#d4ddbd] bg-white/80 px-3 py-1.5 text-[10px] font-extrabold tracking-[1.6px] text-[#445523] shadow-sm">
             <span className="size-1.5 rounded-full bg-[#667c32]" aria-hidden="true" />
             YOUR NEXT CHAPTER STARTS HERE
           </p>
-          <h1 className="m-0 max-w-[560px] text-[clamp(2rem,7vw,3.875rem)] font-extrabold leading-[1.04] tracking-[-0.06em] text-[#27301e]">
+          <h1 className="intro-heading m-0 max-w-[560px] text-[clamp(2rem,7vw,3.875rem)] text-[#27301e]">
             Learn something that{' '}
-            <span className="bg-gradient-to-r from-[#465820] to-[#829645] bg-clip-text text-transparent">
+            <span className="intro-heading-accent bg-gradient-to-r from-[#465820] to-[#829645] bg-clip-text text-transparent">
               moves you forward.
             </span>
           </h1>

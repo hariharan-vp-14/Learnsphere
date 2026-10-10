@@ -6,7 +6,8 @@ The Express API provides cookie-based authentication under `/api/auth`:
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/auth/register` | Register with `name`, a valid `@gmail.com` email, and `password`; optional `role` may be `STUDENT` or `INSTRUCTOR` (defaults to `STUDENT`). |
+| `POST` | `/api/auth/register` | Register a student with `name`, a valid `@gmail.com` email, and `password`. Public registration does not accept a role. |
+| `POST` | `/api/auth/teacher-applications` | Apply for teacher access using the shared account and email-verification system. |
 | `POST` | `/api/auth/verify-email` | Verify the one-time token from the email link; send `{ "token": "..." }`. |
 | `POST` | `/api/auth/resend-verification` | Send another verification link; send `{ "email": "you@gmail.com" }`. |
 | `POST` | `/api/auth/login` | Verify credentials for a `@gmail.com` account and set an HTTP-only `token` cookie. |
@@ -18,25 +19,40 @@ The public home page (`/`) is a lightweight, animated LearnSphere AI introductio
 it checks the existing cookie session before opening the appropriate dashboard.
 The 3D-style scene is CSS-based and is loaded only on that public route. The
 course catalog and course details at `/courses` require sign-in. The
-authentication welcome page provides separate Student and Teacher choices for sign-in and registration. A
-teacher can use an existing student account's email and password to add
-instructor access; this creates a linked
-`InstructorProfile` for the same `User`, rather than a duplicate email/account.
-New teacher accounts also use the same one-time email verification flow as
-student registration and cannot sign in until the email is verified.
-After registration, the app opens a verification-pending page with the
-registered email and a resend option. Verification links return to the app and
-continue to the matching Student or Teacher sign-in screen.
-Registration accepts only `STUDENT` and `INSTRUCTOR` requests and never permits
-public `ADMIN`-role assignment. The login API accepts an optional
-`expectedRole` (`STUDENT` or `INSTRUCTOR`); accounts with instructor profiles
-can use either sign-in choice. Admin accounts may use the Teacher sign-in
-option to access instructor tools.
+authentication welcome page provides separate Student and Teacher choices
+for sign-in and registration. Both use the same `User`, password hash,
+HTTP-only session cookie, and one-time email verification. Student signups
+create a linked `StudentProfile`. Teacher signups submit an application and a
+linked `InstructorProfile`; the account remains a student until an
+administrator approves the application. Pending and rejected applications
+cannot use teacher APIs or dashboards. Existing `INSTRUCTOR` users and course
+ownership remain intact.
+
+The database role enum remains `STUDENT`, `INSTRUCTOR`, and `ADMIN` for
+backward compatibility; `INSTRUCTOR` is the canonical teacher role. Public
+`/api/auth/register` requests cannot set any role. Administrators can list
+verified applications with `GET /api/admin/teacher-applications` and decide
+them with `PATCH /api/admin/teacher-applications/:userId`, sending
+`{ "applicationStatus": "APPROVED" }` or `{ "applicationStatus": "REJECTED" }`.
+An administrator must already exist as a trusted `User` with role `ADMIN`.
+Roles and verification state are loaded from the database for each protected
+API request rather than trusted from possibly stale JWT role claims. The login
+API accepts optional `expectedRole` (`STUDENT` or `INSTRUCTOR`) as a sign-in
+hint, then checks the user's actual approved access.
 
 The instructor-profile table is added by the additive migration at
 `server/prisma/migrations/20261009183000_instructor_profiles/`. It is not
 applied automatically; back up and review the existing database before
 applying pending migrations with `npx prisma migrate deploy`.
+
+The additive migration at
+`server/prisma/migrations/20261010150000_role_profiles_and_teacher_applications/`
+creates `StudentProfile`, backfills profiles for existing student users, and
+adds teacher application/profile fields. Existing instructor profiles default
+to `APPROVED`; the migration does not change or delete existing users, roles,
+courses, enrollments, or course ownership. Review and back up the database,
+then run `npx prisma migrate deploy` and `npx prisma generate` from `server/`
+before starting the updated application.
 
 Course-view tracking adds the `CourseView` table using the additive migration
 at `server/prisma/migrations/20261009194500_course_views/`. Apply it to the
@@ -103,8 +119,9 @@ reviewing the additive SQL, apply pending migrations from `server/` with
 `npx prisma migrate deploy`, then run `npx prisma generate`. Do not use
 `migrate reset` or recreate the `learnsphere` database.
 
-Public registration supports Student and Teacher account choices; unverified
-accounts must verify their email before using protected APIs. For local
+Public registration supports Student accounts and Teacher applications;
+unverified accounts must verify their email before using protected APIs, and
+teacher applications also require administrator approval. For local
 development, an instructor can also be provisioned without email delivery:
 set `NODE_ENV=development`, `DEV_INSTRUCTOR_EMAIL`, `DEV_INSTRUCTOR_NAME`, and
 `DEV_INSTRUCTOR_PASSWORD` in the untracked `server/.env`, then run

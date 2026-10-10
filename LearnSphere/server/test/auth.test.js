@@ -4,15 +4,28 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const users = [];
-const instructorProfiles = new Set();
+const studentProfiles = new Set();
+const instructorProfiles = new Map();
 const verificationEmails = [];
 let failEmailDelivery = false;
 const prismaMock = {
   user: {
-    findUnique: async ({ where }) =>
-      users.find((user) =>
-        where.email ? user.email === where.email : user.id === where.id
-      ) || null,
+    findUnique: async ({ where }) => {
+      const user = users.find((candidate) =>
+        where.email ? candidate.email === where.email : candidate.id === where.id
+      );
+      if (!user) return null;
+      const instructorProfile = instructorProfiles.get(user.id);
+      return {
+        ...user,
+        studentProfile: studentProfiles.has(user.id)
+          ? { id: user.id, userId: user.id }
+          : null,
+        instructorProfile: instructorProfile
+          ? { id: user.id, userId: user.id, ...instructorProfile }
+          : null,
+      };
+    },
     create: async ({ data }) => {
       if (users.some((user) => user.email === data.email)) {
         throw Object.assign(new Error("Unique constraint failed"), {
@@ -21,7 +34,6 @@ const prismaMock = {
       }
 
       const user = { id: users.length + 1, ...data };
-      if (data.instructorProfile?.create) instructorProfiles.add(user.id);
       users.push(user);
       return user;
     },
@@ -43,14 +55,61 @@ const prismaMock = {
       return { count: 1 };
     },
   },
-  instructorProfile: {
+  studentProfile: {
     findUnique: async ({ where }) =>
-      instructorProfiles.has(where.userId) ? { id: where.userId, userId: where.userId } : null,
-    upsert: async ({ where }) => {
-      instructorProfiles.add(where.userId);
-      return { id: where.userId, userId: where.userId };
+      studentProfiles.has(where.userId) ? { id: where.userId, userId: where.userId } : null,
+    create: async ({ data }) => {
+      studentProfiles.add(data.userId);
+      return { id: data.userId, ...data };
     },
   },
+  instructorProfile: {
+    findUnique: async ({ where }) => {
+      if (!instructorProfiles.has(where.userId)) return null;
+      const user = users.find((candidate) => candidate.id === where.userId);
+      return {
+        id: where.userId,
+        userId: where.userId,
+        ...instructorProfiles.get(where.userId),
+        user: { emailVerifiedAt: user?.emailVerifiedAt || null },
+      };
+    },
+    create: async ({ data }) => {
+      instructorProfiles.set(data.userId, data);
+      return { id: data.userId, ...data };
+    },
+    upsert: async ({ where, create, update }) => {
+      const profile = { ...instructorProfiles.get(where.userId), ...create, ...update };
+      instructorProfiles.set(where.userId, profile);
+      return { id: where.userId, ...profile };
+    },
+    findMany: async ({ where }) =>
+      [...instructorProfiles].flatMap(([userId, profile]) => {
+        const user = users.find((candidate) => candidate.id === userId);
+        if (
+          profile.applicationStatus !== where.applicationStatus
+          || !user
+          || !user.emailVerifiedAt
+        ) return [];
+        return [{
+          id: userId,
+          userId,
+          ...profile,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            emailVerifiedAt: user.emailVerifiedAt,
+          },
+        }];
+      }),
+    update: async ({ where, data }) => {
+      const profile = { ...instructorProfiles.get(where.userId), ...data };
+      instructorProfiles.set(where.userId, profile);
+      return { userId: where.userId, ...profile, updatedAt: new Date() };
+    },
+  },
+  $transaction: async (callback) => callback(prismaMock),
 };
 
 process.env.JWT_SECRET = "auth-tests-use-a-private-local-secret";
@@ -113,6 +172,7 @@ test("auth routes satisfy the registration and session checklist", async () => {
   assert.equal(registration.data.role, "STUDENT", "Student role is assigned");
   assert.equal(registration.data.emailVerified, false);
   assert.equal("passwordHash" in registration.data, false);
+  assert.equal(studentProfiles.has(1), true, "StudentProfile is created with the user");
   assert.equal(verificationEmails.length, 1, "Verification email is sent");
   assert.equal(verificationEmails[0].email, "student@gmail.com");
   assert.equal(verificationEmails[0].accountType, "STUDENT");
@@ -127,6 +187,17 @@ test("auth routes satisfy the registration and session checklist", async () => {
     }),
   });
   assert.equal(adminRoleRegistration.status, 400, "Public registration cannot request admin role");
+
+  const publicTeacherRoleRegistration = await request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Attempted Teacher",
+      email: "attemptedteacher@gmail.com",
+      password: "Correct-Horse-42",
+      role: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(publicTeacherRoleRegistration.status, 400, "Public registration cannot assign teacher access");
 
   const storedUser = users[0];
   assert.ok(
@@ -181,34 +252,36 @@ test("auth routes satisfy the registration and session checklist", async () => {
   });
   assert.equal(reusedVerificationResponse.status, 400, "Verification link is single-use");
 
-  const incorrectExistingPasswordRegistration = await request("/api/auth/register", {
+  const incorrectExistingPasswordRegistration = await request("/api/auth/teacher-applications", {
     method: "POST",
     body: JSON.stringify({
       name: "Test Student",
       email: "student@gmail.com",
       password: "Incorrect-Horse-42",
-      role: "INSTRUCTOR",
     }),
   });
   assert.equal(incorrectExistingPasswordRegistration.status, 401);
-  assert.equal(instructorProfiles.has(storedUser.id), false, "Wrong password cannot grant teacher access");
+  assert.equal(instructorProfiles.has(storedUser.id), false, "Wrong password cannot submit a teacher application");
 
-  const teacherRegistrationResponse = await request("/api/auth/register", {
+  const teacherRegistrationResponse = await request("/api/auth/teacher-applications", {
     method: "POST",
     body: JSON.stringify({
       name: "Test Student",
       email: "Student@Gmail.com",
       password: "Correct-Horse-42",
-      role: "INSTRUCTOR",
+      professionalBio: "Experienced instructor",
+      expertise: "Science",
     }),
   });
-  assert.equal(teacherRegistrationResponse.status, 200, "Teacher access can be added to the same account");
+  assert.equal(teacherRegistrationResponse.status, 200, "A verified student can apply on the same account");
   const teacherRegistration = await teacherRegistrationResponse.json();
-  assert.equal(teacherRegistration.data.id, storedUser.id, "Teacher access uses the existing account");
-  assert.equal(teacherRegistration.data.role, "STUDENT", "Primary account role remains unchanged");
-  assert.deepEqual(teacherRegistration.data.roles, ["STUDENT", "INSTRUCTOR"]);
+  assert.equal(teacherRegistration.data.id, storedUser.id, "Teacher application uses the existing account");
+  assert.equal(teacherRegistration.data.role, "STUDENT", "Application does not change the primary role");
+  assert.deepEqual(teacherRegistration.data.roles, ["STUDENT"]);
   assert.equal(teacherRegistration.data.emailVerified, true, "Existing verified email remains verified");
-  assert.equal(instructorProfiles.has(storedUser.id), true, "Instructor capability is recorded separately");
+  assert.equal(teacherRegistration.data.applicationStatus, "PENDING");
+  assert.equal(instructorProfiles.get(storedUser.id).professionalBio, "Experienced instructor");
+  assert.equal(instructorProfiles.get(storedUser.id).applicationStatus, "PENDING");
 
   const registeredTeacherLogin = await request("/api/auth/login", {
     method: "POST",
@@ -218,28 +291,33 @@ test("auth routes satisfy the registration and session checklist", async () => {
       expectedRole: "INSTRUCTOR",
     }),
   });
-  assert.equal(registeredTeacherLogin.status, 200, "The existing verified account can sign in as a teacher");
+  assert.equal(registeredTeacherLogin.status, 403, "Pending applicants cannot sign in as teachers");
   const dualRoleLogin = await registeredTeacherLogin.json();
-  assert.equal(dualRoleLogin.data.role, "STUDENT");
-  assert.deepEqual(dualRoleLogin.data.roles, ["STUDENT", "INSTRUCTOR"]);
+  assert.match(dualRoleLogin.message, /awaiting administrator approval/i);
 
-  const newTeacherRegistrationResponse = await request("/api/auth/register", {
+  const newTeacherRegistrationResponse = await request("/api/auth/teacher-applications", {
     method: "POST",
     body: JSON.stringify({
       name: "New Teacher",
       email: "newteacher@gmail.com",
       password: "New-Teacher-42",
-      role: "INSTRUCTOR",
     }),
   });
   assert.equal(newTeacherRegistrationResponse.status, 201);
   const newTeacherRegistration = await newTeacherRegistrationResponse.json();
   assert.equal(newTeacherRegistration.data.role, "STUDENT");
-  assert.deepEqual(newTeacherRegistration.data.roles, ["STUDENT", "INSTRUCTOR"]);
+  assert.deepEqual(newTeacherRegistration.data.roles, ["STUDENT"]);
   assert.equal(newTeacherRegistration.data.emailVerified, false);
   const newTeacher = users.find((user) => user.email === "newteacher@gmail.com");
-  assert.equal(instructorProfiles.has(newTeacher.id), true);
-  assert.equal(verificationEmails.at(-1).accountType, "INSTRUCTOR");
+  assert.equal(studentProfiles.has(newTeacher.id), true);
+  assert.equal(instructorProfiles.get(newTeacher.id).applicationStatus, "PENDING");
+  assert.equal(verificationEmails.at(-1).accountType, "TEACHER_APPLICATION");
+  const teacherResendResponse = await request("/api/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({ email: "newteacher@gmail.com" }),
+  });
+  assert.equal(teacherResendResponse.status, 200);
+  assert.equal(verificationEmails.at(-1).accountType, "TEACHER_APPLICATION");
 
   const unverifiedNewTeacherLogin = await request("/api/auth/login", {
     method: "POST",
@@ -266,7 +344,84 @@ test("auth routes satisfy the registration and session checklist", async () => {
       expectedRole: "INSTRUCTOR",
     }),
   });
-  assert.equal(verifiedNewTeacherLogin.status, 200);
+  assert.equal(verifiedNewTeacherLogin.status, 403, "Email verification does not bypass teacher approval");
+
+  const admin = {
+    id: users.length + 1,
+    name: "Test Admin",
+    email: "admin@gmail.com",
+    passwordHash: await bcrypt.hash("Admin-Password-42", 4),
+    role: "ADMIN",
+    emailVerifiedAt: new Date(),
+  };
+  users.push(admin);
+  const adminLoginResponse = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email: admin.email, password: "Admin-Password-42" }),
+  });
+  assert.equal(adminLoginResponse.status, 200);
+  const adminCookie = adminLoginResponse.headers.get("set-cookie").split(";", 1)[0];
+  const unverifiedApplicant = {
+    id: users.length + 1,
+    name: "Unverified Applicant",
+    email: "unverifiedteacher@gmail.com",
+    passwordHash: await bcrypt.hash("Unverified-Teacher-42", 4),
+    role: "STUDENT",
+    emailVerifiedAt: null,
+  };
+  users.push(unverifiedApplicant);
+  studentProfiles.add(unverifiedApplicant.id);
+  instructorProfiles.set(unverifiedApplicant.id, {
+    applicationStatus: "PENDING",
+  });
+  const unverifiedApprovalResponse = await request(
+    `/api/admin/teacher-applications/${unverifiedApplicant.id}`,
+    {
+      method: "PATCH",
+      headers: { Cookie: adminCookie },
+      body: JSON.stringify({ applicationStatus: "APPROVED" }),
+    }
+  );
+  assert.equal(unverifiedApprovalResponse.status, 409, "Admins cannot approve unverified applications");
+
+  const pendingApplicationsResponse = await request("/api/admin/teacher-applications", {
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(pendingApplicationsResponse.status, 200, "Admins can review verified teacher applications");
+  const pendingApplications = await pendingApplicationsResponse.json();
+  assert.ok(pendingApplications.data.some((application) => application.userId === newTeacher.id));
+  const approvalResponse = await request(`/api/admin/teacher-applications/${newTeacher.id}`, {
+    method: "PATCH",
+    headers: { Cookie: adminCookie },
+    body: JSON.stringify({ applicationStatus: "APPROVED" }),
+  });
+  assert.equal(approvalResponse.status, 200, "An admin can approve an application");
+  const repeatedDecisionResponse = await request(
+    `/api/admin/teacher-applications/${newTeacher.id}`,
+    {
+      method: "PATCH",
+      headers: { Cookie: adminCookie },
+      body: JSON.stringify({ applicationStatus: "REJECTED" }),
+    }
+  );
+  assert.equal(
+    repeatedDecisionResponse.status,
+    409,
+    "An approval cannot later alter an existing instructor profile"
+  );
+
+  const approvedTeacherLogin = await request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: "newteacher@gmail.com",
+      password: "New-Teacher-42",
+      expectedRole: "INSTRUCTOR",
+    }),
+  });
+  assert.equal(approvedTeacherLogin.status, 200);
+  const approvedTeacher = await approvedTeacherLogin.json();
+  assert.ok(approvedTeacher.data.roles.includes("INSTRUCTOR"));
+  assert.equal(approvedTeacher.data.instructorProfile.applicationStatus, "APPROVED");
 
   const nonGmailRegisterResponse = await request("/api/auth/register", {
     method: "POST",
@@ -323,6 +478,19 @@ test("auth routes satisfy the registration and session checklist", async () => {
   assert.equal("token" in login.data, false);
   assert.equal(login.data.role, "STUDENT");
 
+  assert.equal(
+    (await request("/api/admin/teacher-applications")).status,
+    401,
+    "Teacher-application administration requires authentication"
+  );
+  assert.equal(
+    (await request("/api/admin/teacher-applications", {
+      headers: { Cookie: sessionCookie },
+    })).status,
+    403,
+    "Students cannot administer teacher applications"
+  );
+
   const teacher = {
     id: users.length + 1,
     name: "Second Teacher",
@@ -360,23 +528,32 @@ test("auth routes satisfy the registration and session checklist", async () => {
   assert.equal(protectedWithCookie.status, 200);
 
   const legacyUnverifiedToken = jwt.sign(
-    { id: storedUser.id, email: storedUser.email, role: storedUser.role },
+    {
+      id: storedUser.id,
+      email: storedUser.email,
+      role: "ADMIN",
+      roles: ["ADMIN"],
+      emailVerified: false,
+    },
     process.env.JWT_SECRET
   );
   const legacyProtectedResponse = await request("/api/auth/protected", {
     headers: { Authorization: `Bearer ${legacyUnverifiedToken}` },
   });
-  assert.equal(
-    legacyProtectedResponse.status,
-    403,
-    "Sessions without verified-email claim are rejected"
-  );
+  assert.equal(legacyProtectedResponse.status, 200, "Current verified account state accepts legacy tokens");
+  const protectedUser = (await legacyProtectedResponse.json()).user;
+  assert.equal(protectedUser.role, "STUDENT");
+  assert.deepEqual(protectedUser.roles, ["STUDENT"], "Role claims are refreshed from the database");
 
   const meResponse = await request("/api/auth/me", {
     headers: { Cookie: sessionCookie },
   });
   assert.equal(meResponse.status, 200, "/api/auth/me works");
-  assert.equal((await meResponse.json()).data.email, "student@gmail.com");
+  const currentProfile = (await meResponse.json()).data;
+  assert.equal(currentProfile.email, "student@gmail.com");
+  assert.equal(currentProfile.role, "STUDENT");
+  assert.deepEqual(currentProfile.roles, ["STUDENT"]);
+  assert.equal("passwordHash" in currentProfile, false);
   assert.equal(storedUser.emailVerifiedAt instanceof Date, true);
 
   const unauthorizedProfileResponse = await request("/api/auth/me");
@@ -398,6 +575,10 @@ test("auth routes satisfy the registration and session checklist", async () => {
     /token=;.*Expires=/i,
     "Logout clears cookie"
   );
+  const loggedOutResponse = await request("/api/auth/protected", {
+    headers: { Cookie: logoutResponse.headers.get("set-cookie").split(";", 1)[0] },
+  });
+  assert.equal(loggedOutResponse.status, 401, "The cleared browser session cannot access protected routes");
 
   failEmailDelivery = true;
   const emailDeliveryFailure = await request("/api/auth/register", {

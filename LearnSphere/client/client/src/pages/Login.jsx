@@ -32,7 +32,7 @@ function Login() {
 
     try {
       const result = await login({ ...form, expectedRole: selectedRole })
-      navigate(getDashboardPath(result.data), { replace: true })
+      navigate(getDashboardPath(result.data, selectedRole), { replace: true })
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
       if (

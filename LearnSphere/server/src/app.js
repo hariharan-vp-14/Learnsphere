@@ -8,6 +8,7 @@ const courseRoutes = require("./routes/course.routes");
 const curriculumRoutes = require("./routes/curriculum.routes");
 const enrollmentRoutes = require("./routes/enrollment.routes");
 const instructorRoutes = require("./routes/instructor.routes");
+const adminRoutes = require("./routes/admin.routes");
 
 const app = express();
 const clientOrigin = process.env.CLIENT_URL
@@ -37,5 +38,6 @@ app.use("/api/courses", courseRoutes);
 app.use("/api/curriculum", curriculumRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/instructor", instructorRoutes);
+app.use("/api/admin", adminRoutes);
 
 module.exports = app;

@@ -24,6 +24,7 @@ function VerifyEmail() {
   const verificationStarted = useRef('')
   const token = new URLSearchParams(location.search).get('token')
   const requestedRole = new URLSearchParams(location.search).get('role')
+  const isTeacherApplication = new URLSearchParams(location.search).get('flow') === 'teacher-application'
   const selectedRole = requestedRole === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'STUDENT'
 
   useEffect(() => {
@@ -34,13 +35,15 @@ function VerifyEmail() {
     verifyEmail(token)
       .then((result) => {
         setStatus('success')
-        setMessage(result.message)
+        setMessage(isTeacherApplication
+          ? 'Your email is verified. An administrator must approve your teacher application before you can use teaching tools.'
+          : result.message)
       })
       .catch((error) => {
         setStatus('error')
         setMessage(getApiErrorMessage(error))
       })
-  }, [token, verifyEmail])
+  }, [isTeacherApplication, token, verifyEmail])
 
   const visibleStatus = token ? status : 'error'
   const visibleMessage = token ? message : 'The verification link is missing its token.'
@@ -69,9 +72,11 @@ function VerifyEmail() {
       {visibleStatus !== 'loading' && (
         <Link
           className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-brand px-[17px] text-[13px] font-bold text-white no-underline transition hover:-translate-y-px hover:bg-[#354418]"
-          to={`/login?role=${selectedRole}${visibleStatus === 'success' ? '&verified=1' : ''}`}
+          to={`/login?role=${isTeacherApplication ? 'STUDENT' : selectedRole}${visibleStatus === 'success' ? '&verified=1' : ''}`}
         >
-          {visibleStatus === 'success' ? `Continue to ${selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in` : 'Return to sign in'}
+          {visibleStatus === 'success'
+            ? `Continue to ${isTeacherApplication ? 'student' : selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in`
+            : 'Return to sign in'}
         </Link>
       )}
       </section>
@@ -145,7 +150,7 @@ function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['STUDENT']}>
             <StudentDashboard />
           </ProtectedRoute>
         }

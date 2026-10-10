@@ -19,7 +19,10 @@ const sendVerificationEmail = async ({ email, token, accountType }) => {
 
   const verificationUrl = new URL("/verify-email", CLIENT_URL);
   verificationUrl.searchParams.set("token", token);
-  if (accountType === "STUDENT" || accountType === "INSTRUCTOR") {
+  if (accountType === "TEACHER_APPLICATION") {
+    verificationUrl.searchParams.set("role", "INSTRUCTOR");
+    verificationUrl.searchParams.set("flow", "teacher-application");
+  } else if (accountType === "STUDENT" || accountType === "INSTRUCTOR") {
     verificationUrl.searchParams.set("role", accountType);
   }
 

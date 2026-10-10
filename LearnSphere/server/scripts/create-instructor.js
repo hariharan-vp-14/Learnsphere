@@ -38,14 +38,19 @@ const main = async () => {
       );
     }
 
-    await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash: await bcrypt.hash(password, 12),
-        role: "INSTRUCTOR",
-        emailVerifiedAt: new Date(),
-      },
+    await prisma.$transaction(async (transaction) => {
+      const user = await transaction.user.create({
+        data: {
+          name,
+          email,
+          passwordHash: await bcrypt.hash(password, 12),
+          role: "INSTRUCTOR",
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await transaction.instructorProfile.create({
+        data: { userId: user.id, applicationStatus: "APPROVED" },
+      });
     });
     console.info("Development instructor account created and email-verified.");
   } finally {

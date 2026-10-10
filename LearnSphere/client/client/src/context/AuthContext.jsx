@@ -49,6 +49,18 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
+  const applyForInstructor = useCallback(async (details) => {
+    const { data } = await api.post('/teacher-applications', details)
+    if (data.data?.roles) {
+      setUser((current) => (
+        current?.id === data.data.id
+          ? { ...current, ...data.data }
+          : current
+      ))
+    }
+    return data
+  }, [])
+
   const resendVerification = useCallback(async (email) => {
     const { data } = await api.post('/resend-verification', { email })
     return data
@@ -70,6 +82,7 @@ export function AuthProvider({ children }) {
     authError,
     login,
     register,
+    applyForInstructor,
     resendVerification,
     verifyEmail,
     logout,
@@ -79,6 +92,7 @@ export function AuthProvider({ children }) {
     authError,
     login,
     register,
+    applyForInstructor,
     resendVerification,
     verifyEmail,
     logout,
