@@ -105,8 +105,8 @@ function CourseCatalog() {
                   </div>
                   <h3 className="m-0 text-lg font-bold leading-snug text-[#27301e]">{course.title}</h3>
                   <p className="mb-5 mt-2 line-clamp-3 flex-1 text-sm leading-6 text-[#535b4a]">{course.description}</p>
-                  <div className="flex items-center justify-between border-t border-[#edf0e7] pt-4">
-                    <span className="text-xs font-medium text-[#5b624f]">By {course.instructor.name}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0e7] pt-4">
+                    <span className="min-w-0 break-words text-xs font-medium text-[#5b624f]">By {course.instructor.name}</span>
                     <Link
                       className="inline-flex items-center gap-1.5 text-xs font-bold text-[#4f6125] no-underline transition group-hover:text-[#29331d]"
                       to={`/courses/${encodeURIComponent(course.slug)}`}

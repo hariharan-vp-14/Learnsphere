@@ -53,7 +53,7 @@ function InstructorStudents() {
                       <article className="grid gap-2 p-5 sm:grid-cols-[1fr_1fr_auto] sm:items-center" key={item.id}>
                         <div>
                           <h2 className="m-0 text-sm font-bold text-[#27301e]">{item.student.name}</h2>
-                          <p className="mb-0 mt-1 text-xs text-[#535b4a]">{item.student.email}</p>
+                          <p className="mb-0 mt-1 break-all text-xs text-[#535b4a]">{item.student.email}</p>
                         </div>
                         <div>
                           <p className="m-0 text-sm font-semibold text-[#394625]">{item.course.title}</p>
@@ -75,7 +75,7 @@ function InstructorStudents() {
                 )}
               </div>
               {result.pagination.totalPages > 1 && (
-                <div className="mt-5 flex justify-end gap-2">
+                <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
                   <button className="rounded-lg border border-[#d9dfca] px-4 py-2 text-sm font-bold text-[#394625] disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} type="button">Previous</button>
                   <span className="px-3 py-2 text-sm text-[#394625]">Page {page} of {result.pagination.totalPages}</span>
                   <button className="rounded-lg border border-[#d9dfca] px-4 py-2 text-sm font-bold text-[#394625] disabled:opacity-50" disabled={page >= result.pagination.totalPages} onClick={() => setPage((value) => value + 1)} type="button">Next</button>

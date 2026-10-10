@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { getApiErrorMessage } from './api/axios'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -13,6 +13,8 @@ import Register from './pages/Register'
 import StudentLearning from './pages/StudentLearning'
 import StudentDashboard from './pages/StudentDashboard'
 import VerificationPending from './pages/VerificationPending'
+
+const IntroPage = lazy(() => import('./pages/IntroPage'))
 
 function VerifyEmail() {
   const { verifyEmail } = useAuth()
@@ -80,9 +82,30 @@ function VerifyEmail() {
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/courses" replace />} />
-      <Route path="/courses" element={<CourseCatalog />} />
-      <Route path="/courses/:slug" element={<CourseDetails />} />
+      <Route
+        path="/"
+        element={(
+          <Suspense fallback={<main className="grid min-h-screen place-items-center text-sm text-[#535b4a]" role="status">Loading LearnSphere…</main>}>
+            <IntroPage />
+          </Suspense>
+        )}
+      />
+      <Route
+        path="/courses"
+        element={
+          <ProtectedRoute>
+            <CourseCatalog />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/courses/:slug"
+        element={
+          <ProtectedRoute>
+            <CourseDetails />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verification-pending" element={<VerificationPending />} />

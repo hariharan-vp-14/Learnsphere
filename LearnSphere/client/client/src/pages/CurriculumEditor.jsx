@@ -122,7 +122,7 @@ function CurriculumEditor() {
                         <h2 className="m-0 text-lg font-bold text-[#27301e]">{index + 1}. {module.title}</h2>
                         {module.description && <p className="mb-0 mt-1 text-sm text-[#535b4a]">{module.description}</p>}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button aria-label={`Move ${module.title} up`} className="rounded-lg border border-[#d9dfca] px-3 py-2 text-sm font-bold text-[#394625] disabled:opacity-40" disabled={busy || index === 0} onClick={() => moveModule(index, -1)} type="button">↑</button>
                         <button aria-label={`Move ${module.title} down`} className="rounded-lg border border-[#d9dfca] px-3 py-2 text-sm font-bold text-[#394625] disabled:opacity-40" disabled={busy || index === course.modules.length - 1} onClick={() => moveModule(index, 1)} type="button">↓</button>
                         <button className="rounded-lg border border-[#d9dfca] px-3 py-2 text-xs font-bold text-[#394625]" onClick={() => { setEditingModuleId(module.id); setModuleEdit({ title: module.title, description: module.description || '' }) }} type="button">Edit</button>
@@ -162,7 +162,7 @@ function CurriculumEditor() {
                             <>
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span>{lessonIndex + 1}. {lesson.title}</span>
-                                <div className="flex gap-1">
+                                <div className="flex flex-wrap gap-1">
                                   <button aria-label={`Move ${lesson.title} up`} className="rounded border border-[#d9dfca] px-2 py-1 text-xs disabled:opacity-40" disabled={busy || lessonIndex === 0} onClick={() => moveLesson(module, lessonIndex, -1)} type="button">↑</button>
                                   <button aria-label={`Move ${lesson.title} down`} className="rounded border border-[#d9dfca] px-2 py-1 text-xs disabled:opacity-40" disabled={busy || lessonIndex === module.lessons.length - 1} onClick={() => moveLesson(module, lessonIndex, 1)} type="button">↓</button>
                                   <button className="rounded border border-[#d9dfca] px-2 py-1 text-xs" onClick={() => {

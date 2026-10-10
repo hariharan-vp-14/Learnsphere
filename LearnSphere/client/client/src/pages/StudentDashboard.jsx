@@ -27,11 +27,11 @@ function StudentDashboard() {
           ✓
         </div>
         <p className="mb-4 mt-0 text-[11px] font-extrabold tracking-[1.7px] text-brand">EMAIL VERIFIED</p>
-        <h1 className="m-0 text-[38px] font-bold tracking-[-1.5px] text-[#27301e]">
+        <h1 className="m-0 break-words text-[clamp(1.75rem,8vw,2.375rem)] font-bold tracking-[-1.5px] text-[#27301e]">
           Welcome, {user.name}
         </h1>
         <p className="mt-3 text-base leading-[1.7] text-[#72778a]">
-          You’re signed in to LearnSphere as {user.email}.
+          You’re signed in to LearnSphere as <span className="break-all">{user.email}</span>.
         </p>
         <span className="mt-[22px] inline-block rounded-full bg-[#e8eddc] px-3 py-1.5 text-[11px] font-bold tracking-[0.5px] text-[#445523]">
           {userRoles.join(' · ')}

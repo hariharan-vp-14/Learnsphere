@@ -16,7 +16,7 @@
   }
 
   body {
-    @apply m-0 min-h-screen min-w-[320px] bg-[#f7f8f2] text-ink;
+    @apply m-0 min-h-screen min-w-0 bg-[#f7f8f2] text-ink;
   }
 
   button,
@@ -24,8 +24,237 @@
     font: inherit;
   }
 
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
+  }
+
   button:focus-visible,
   a:focus-visible {
     @apply outline-3 outline-offset-3 outline-[rgba(79,97,37,0.55)];
+  }
+}
+
+.intro-page {
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+}
+
+.intro-brand,
+.intro-sign-in,
+.intro-eyebrow,
+.intro-description,
+.intro-footer {
+  letter-spacing: 0.01em;
+}
+
+.intro-heading {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.075em;
+  line-height: 0.98;
+}
+
+.intro-heading-accent {
+  display: inline-block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: -0.065em;
+}
+
+.intro-eyebrow {
+  letter-spacing: 0.13em;
+}
+
+.intro-scene {
+  --orbit-radius: clamp(170px, 20vw, 245px);
+  perspective: 1100px;
+  isolation: isolate;
+}
+
+.intro-center-image-wrap {
+  transform: translate(-50%, -50%);
+}
+
+.intro-center-image {
+  filter: drop-shadow(0 12px 20px rgb(63 77 36 / 12%));
+  animation: intro-image-enter 800ms cubic-bezier(0.2, 0.75, 0.3, 1) both;
+}
+
+.intro-orbit {
+  width: calc(var(--orbit-radius) * 2);
+  height: calc(var(--orbit-radius) * 2);
+  border: 1px solid rgb(205 215 178 / 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.intro-orbiting-item {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  animation: intro-orbit-revolve 32s linear infinite;
+}
+
+.intro-orbiting-icon {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + var(--orbit-radius));
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 16px;
+  box-shadow: 0 12px 26px rgb(63 77 36 / 18%);
+  translate: -50% -50%;
+  animation: intro-orbit-counter 32s linear infinite;
+  animation-delay: inherit;
+}
+
+.intro-material-book {
+  background: #e3edff;
+  color: #315cbd;
+}
+
+.intro-material-cap {
+  background: #ffe9df;
+  color: #c65432;
+}
+
+.intro-material-laptop {
+  background: #e2f6ef;
+  color: #168469;
+}
+
+.intro-material-bag {
+  background: #f0e7ff;
+  color: #7544bb;
+}
+
+.intro-material-pencil {
+  background: #fff2cf;
+  color: #aa7613;
+}
+
+.intro-material-calculator {
+  background: #ffe5ef;
+  color: #c14478;
+}
+
+.intro-material-notes {
+  background: #e5f3f8;
+  color: #277b9a;
+}
+
+.intro-material-brain {
+  background: #edf0d9;
+  color: #68792a;
+}
+
+.intro-orbit-delay-1 {
+  --orbit-angle: 0deg;
+  animation-delay: 0s;
+}
+
+.intro-orbit-delay-2 {
+  --orbit-angle: 45deg;
+  animation-delay: -4s;
+}
+
+.intro-orbit-delay-3 {
+  --orbit-angle: 90deg;
+  animation-delay: -8s;
+}
+
+.intro-orbit-delay-4 {
+  --orbit-angle: 135deg;
+  animation-delay: -12s;
+}
+
+.intro-orbit-delay-5 {
+  --orbit-angle: 180deg;
+  animation-delay: -16s;
+}
+
+.intro-orbit-delay-6 {
+  --orbit-angle: 225deg;
+  animation-delay: -20s;
+}
+
+.intro-orbit-delay-7 {
+  --orbit-angle: 270deg;
+  animation-delay: -24s;
+}
+
+.intro-orbit-delay-8 {
+  --orbit-angle: 315deg;
+  animation-delay: -28s;
+}
+
+@keyframes intro-orbit-revolve {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes intro-orbit-counter {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes intro-image-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-center-image {
+    animation: none;
+  }
+
+  .intro-orbiting-item {
+    animation: none;
+    transform: rotate(var(--orbit-angle));
+  }
+
+  .intro-orbiting-icon {
+    animation: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .intro-scene {
+    --orbit-radius: min(120px, 34vw);
+  }
+
+  .intro-orbiting-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 13px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 }

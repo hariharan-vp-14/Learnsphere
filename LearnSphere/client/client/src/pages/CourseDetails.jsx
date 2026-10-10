@@ -99,10 +99,10 @@ function CourseDetails() {
                 <span className="inline-flex items-center gap-2 rounded-full border border-[#d2dbbe] bg-white/80 px-3 py-1.5 text-[11px] font-bold text-[#445523]">
                   <BookOpen className="size-4" aria-hidden="true" /> Published course
                 </span>
-                <h1 className="mb-0 mt-5 max-w-[740px] text-3xl font-extrabold leading-tight tracking-[-1.4px] text-[#27301e] sm:text-5xl">
+                <h1 className="mb-0 mt-5 max-w-[740px] break-words text-3xl font-extrabold leading-tight tracking-[-1.4px] text-[#27301e] sm:text-5xl">
                   {course.title}
                 </h1>
-                <p className="mb-0 mt-4 max-w-[680px] text-base leading-7 text-[#46503a]">
+                <p className="mb-0 mt-4 max-w-[680px] break-words text-base leading-7 text-[#46503a]">
                   {course.description}
                 </p>
               </div>

@@ -14,9 +14,13 @@ The Express API provides cookie-based authentication under `/api/auth`:
 | `POST` | `/api/auth/logout` | Clear the session cookie. |
 | `GET` | `/api/auth/protected` | Example route requiring authentication. |
 
-The authentication welcome page provides separate Student and Teacher choices
-for sign-in and registration. A teacher can use an existing student account's
-email and password to add instructor access; this creates a linked
+The public home page (`/`) is a lightweight, animated LearnSphere AI introduction;
+it checks the existing cookie session before opening the appropriate dashboard.
+The 3D-style scene is CSS-based and is loaded only on that public route. The
+course catalog and course details at `/courses` require sign-in. The
+authentication welcome page provides separate Student and Teacher choices for sign-in and registration. A
+teacher can use an existing student account's email and password to add
+instructor access; this creates a linked
 `InstructorProfile` for the same `User`, rather than a duplicate email/account.
 New teacher accounts also use the same one-time email verification flow as
 student registration and cannot sign in until the email is verified.

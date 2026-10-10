@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../api/axios'
 import AccountTypeChooser from '../components/AccountTypeChooser'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
+import { getDashboardPath } from '../utils/userRoutes'
 
 function Login() {
   const { login, resendVerification } = useAuth()
@@ -30,8 +31,8 @@ function Login() {
     setPendingEmail('')
 
     try {
-      await login({ ...form, expectedRole: selectedRole })
-      navigate(selectedRole === 'INSTRUCTOR' ? '/instructor/courses' : '/dashboard', { replace: true })
+      const result = await login({ ...form, expectedRole: selectedRole })
+      navigate(getDashboardPath(result.data), { replace: true })
     } catch (requestError) {
       setError(getApiErrorMessage(requestError))
       if (

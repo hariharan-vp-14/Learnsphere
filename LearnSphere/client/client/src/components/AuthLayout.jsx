@@ -25,7 +25,7 @@ function AuthLayout({ children, mode }) {
             <span className="size-1.5 rounded-full bg-[#667c32]" aria-hidden="true" />
             YOUR NEXT CHAPTER STARTS HERE
           </p>
-          <h1 className="m-0 max-w-[560px] text-[42px] font-extrabold leading-[1.04] tracking-[-2.8px] text-[#27301e] sm:text-[54px] lg:text-[62px]">
+          <h1 className="m-0 max-w-[560px] text-[clamp(2rem,7vw,3.875rem)] font-extrabold leading-[1.04] tracking-[-0.06em] text-[#27301e]">
             Learn something that{' '}
             <span className="bg-gradient-to-r from-[#465820] to-[#829645] bg-clip-text text-transparent">
               moves you forward.
