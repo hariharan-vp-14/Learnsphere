@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import api from '../api/axios'
+import api, { AUTH_SESSION_EXPIRED_EVENT } from '../api/axios'
 
 const AuthContext = createContext(null)
 
@@ -10,6 +10,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let isCurrent = true
+    const clearExpiredSession = () => {
+      setUser(null)
+      setAuthError('')
+    }
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, clearExpiredSession)
 
     api.get('/me')
       .then(({ data }) => {
@@ -27,6 +32,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       isCurrent = false
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, clearExpiredSession)
     }
   }, [])
 

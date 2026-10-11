@@ -44,7 +44,7 @@ function AccountTypeChooser({ mode }) {
           <span>
             <span className="auth-option-title block text-sm font-extrabold text-[#27301e]">I’m a teacher</span>
             <span className="auth-card-copy mt-1 block text-xs leading-5 text-[#535b4a]">
-              {isRegister ? 'Create a teacher account to publish courses' : 'Sign in to create and publish courses'}
+              {isRegister ? 'Apply for teacher access and publish after approval' : 'Sign in to check your application or manage courses'}
             </span>
           </span>
           <ArrowRight className="ml-auto size-4 shrink-0 text-[#4f6125] transition group-hover:translate-x-1" aria-hidden="true" />

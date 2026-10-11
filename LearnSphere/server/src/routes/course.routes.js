@@ -11,20 +11,23 @@ const {
   updateCourse,
 } = require("../controllers/course.controller");
 const { protect } = require("../middleware/auth.middleware");
-const { requireRoles } = require("../middleware/role.middleware");
+const {
+  requireApprovedInstructor,
+  requireStudent,
+} = require("../middleware/role.middleware");
 const {
   enroll,
-  getEnrollment,
+  getCourseEnrollment,
 } = require("../controllers/enrollment.controller");
 
 const router = express.Router();
-const instructorAccess = [protect, requireRoles("INSTRUCTOR", "ADMIN")];
+const instructorAccess = [protect, requireApprovedInstructor];
 
 router.get("/", listPublishedCourses);
 router.get("/mine", ...instructorAccess, listInstructorCourses);
 router.post("/", ...instructorAccess, createCourse);
-router.get("/:slug/enrollment", protect, requireRoles("STUDENT"), getEnrollment);
-router.post("/:slug/enroll", protect, requireRoles("STUDENT"), enroll);
+router.get("/:slug/enrollment", protect, requireStudent, getCourseEnrollment);
+router.post("/:slug/enroll", protect, requireStudent, enroll);
 router.post("/:slug/view", recordCourseView);
 router.get("/:slug", getPublishedCourse);
 router.put("/:id", ...instructorAccess, updateCourse);

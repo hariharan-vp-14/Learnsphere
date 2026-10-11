@@ -28,17 +28,34 @@ administrator approves the application. Pending and rejected applications
 cannot use teacher APIs or dashboards. Existing `INSTRUCTOR` users and course
 ownership remain intact.
 
-The database role enum remains `STUDENT`, `INSTRUCTOR`, and `ADMIN` for
-backward compatibility; `INSTRUCTOR` is the canonical teacher role. Public
-`/api/auth/register` requests cannot set any role. Administrators can list
-verified applications with `GET /api/admin/teacher-applications` and decide
-them with `PATCH /api/admin/teacher-applications/:userId`, sending
-`{ "applicationStatus": "APPROVED" }` or `{ "applicationStatus": "REJECTED" }`.
-An administrator must already exist as a trusted `User` with role `ADMIN`.
-Roles and verification state are loaded from the database for each protected
-API request rather than trusted from possibly stale JWT role claims. The login
-API accepts optional `expectedRole` (`STUDENT` or `INSTRUCTOR`) as a sign-in
-hint, then checks the user's actual approved access.
+The database role enum remains `STUDENT`, `INSTRUCTOR`, and `ADMIN`;
+`INSTRUCTOR` is the canonical approved teacher role. Applicants use the
+existing `STUDENT` authentication role while their separate instructor-profile
+application status is `PENDING` or `REJECTED`, which lets them sign in without
+granting instructor privileges. Public registrations cannot assign roles.
+
+`/admin/dashboard` is the admin-only application review UI. Its API includes
+`GET /api/admin/dashboard`, paginated/searchable
+`GET /api/admin/teacher-applications?page=1&status=PENDING&search=`,
+`GET /api/admin/teacher-applications/:id`,
+`GET /api/admin/teacher-applications/:id/reviews`,
+`PATCH /api/admin/teacher-applications/:id/approve`, and
+`PATCH /api/admin/teacher-applications/:id/reject` with optional
+`{ "reason": "..." }`. Decisions are compare-and-set inside a transaction,
+store reviewer/time and append to review history. `/api/auth/me` and login
+return current database role and application status; protected APIs do not
+trust JWT role claims.
+
+At most five active (`User.role = ADMIN`) accounts may exist. Provisioning is
+available only through `npm run provision:admin` using
+`ADMIN_PROVISION_CONFIRM=CREATE_ADMIN`, `ADMIN_PROVISION_NAME`,
+`ADMIN_PROVISION_EMAIL`, and `ADMIN_PROVISION_PASSWORD` from the private
+`server/.env`. It refuses to promote existing accounts. All provisioners lock
+the singleton `AdminCapacityLock` row inside a MySQL transaction before
+counting/inserting, serializing concurrent attempts. This is a five-active-
+admins limit, not a lifetime account count. The initial admin bootstrap uses
+the same bounded command. Ordinary admin approval endpoints cannot provision
+administrators.
 
 The instructor-profile table is added by the additive migration at
 `server/prisma/migrations/20261009183000_instructor_profiles/`. It is not
@@ -53,6 +70,15 @@ to `APPROVED`; the migration does not change or delete existing users, roles,
 courses, enrollments, or course ownership. Review and back up the database,
 then run `npx prisma migrate deploy` and `npx prisma generate` from `server/`
 before starting the updated application.
+
+The additive migration at
+`server/prisma/migrations/20261011150000_admin_capacity_and_teacher_reviews/`
+adds review metadata/history and the singleton administrator-capacity lock.
+It also promotes existing approved instructor profiles from `STUDENT` to
+`INSTRUCTOR`, preserving account IDs and course ownership. Review and back up
+the database, then apply pending migrations with `npx prisma migrate deploy`
+and run `npx prisma generate`. The capacity lock must exist before admin
+provisioning; do not bypass it with manual role changes.
 
 Course-view tracking adds the `CourseView` table using the additive migration
 at `server/prisma/migrations/20261009194500_course_views/`. Apply it to the
@@ -70,9 +96,9 @@ configured `learnsphere` database; it does not reset or recreate the database.
 | `GET` | `/api/courses/:slug` | Get a published course by slug. |
 | `POST` | `/api/courses/:slug/view` | Record one course detail view per browser session; body: `{ "visitorId": "<UUID>" }`. |
 | `GET` | `/api/courses/mine` | List the signed-in instructor's courses (admins can list all). |
-| `POST` | `/api/courses` | Create a draft course; instructor/admin only. |
-| `PUT` | `/api/courses/:id` | Update course title, description, or price; owner/admin only. |
-| `POST` | `/api/courses/:id/publish` | Publish a course to the public catalog; owner/admin only. |
+| `POST` | `/api/courses` | Create a draft course; approved instructor/admin only. |
+| `PUT` | `/api/courses/:id` | Update course title, description, or price; owner/admin only, approved instructor. |
+| `POST` | `/api/courses/:id/publish` | Publish a course to the public catalog; approved instructor/admin only. |
 | `POST` | `/api/courses/:id/unpublish` | Move a published course back to draft; owner/admin only. |
 | `POST` | `/api/courses/:id/archive` | Archive a course; owner/admin only. |
 
@@ -83,6 +109,12 @@ editing at `/instructor/courses/:courseId/curriculum` and an enrollment list at
 `/instructor/students`. Its dashboard counts courses and enrollment/progress
 records from the database. Course detail views are counted as unique
 browser-session visits since tracking was enabled.
+Pending and rejected teacher applicants sign in and see their approval state at
+`/teacher/application`; instructor, curriculum, publishing, and student-list
+endpoints require the current `INSTRUCTOR` role with `APPROVED` profile status
+(or `ADMIN`). Pending teachers can neither create drafts nor publish through
+direct API calls. An administrator-only shield shortcut links to
+`/admin/dashboard`.
 The instructor dashboard reports payment amounts only from database `Payment`
 records marked `SUCCESS` or `REFUNDED`, grouped by currency. This is a report
 of recorded payment state—not proof of a live provider settlement—and paid
@@ -100,15 +132,29 @@ checkout is not enabled in the application yet.
 | `PUT` | `/api/curriculum/modules/:moduleId/lessons/reorder` | Reorder all lessons in a module with `{ "lessonIds": [1, 2] }`. |
 | `PUT` / `DELETE` | `/api/curriculum/lessons/:lessonId` | Update or delete an owned lesson. |
 | `GET` | `/api/courses/:slug/enrollment` | Check the signed-in student's enrollment. |
-| `POST` | `/api/courses/:slug/enroll` | Enroll a student in a published free course; repeated enrollment is idempotent. |
-| `GET` | `/api/enrollments/mine` | List the signed-in student's active and completed courses. |
+| `POST` | `/api/enrollments` | Enroll in a published course; paid courses require a successful order and payment; send `{ "courseId": 1 }` or `{ "courseSlug": "course-slug" }`. |
+| `POST` | `/api/courses/:slug/enroll` | Backward-compatible alias for free-course enrollment. |
+| `GET` | `/api/enrollments/my` | List the signed-in student's published, active and completed courses with curriculum-based progress and next lesson. |
+| `GET` | `/api/enrollments/mine` | Backward-compatible alias for the student's enrollment list. |
+| `GET` | `/api/enrollments/:enrollmentId` | Retrieve an enrollment and curriculum metadata belonging to the signed-in student. |
+| `GET` | `/api/enrollments/:enrollmentId/progress` | Retrieve the student's completed lesson IDs and course progress. |
 | `GET` | `/api/enrollments/:enrollmentId/lessons/:lessonId` | Read lesson content after verifying enrollment and course ownership. |
 | `POST` | `/api/enrollments/:enrollmentId/lessons/:lessonId/complete` | Record lesson completion and update enrollment progress. |
 
+The student dashboard is available at `/dashboard`; the learning view at
+`/learning` resumes the first incomplete lesson when opened with an
+`enrollmentId` query parameter. These routes require an authenticated account
+whose database role is `STUDENT`; teacher and administrator role aliases do not
+grant student enrollment access. Lesson content and progress endpoints also
+verify ownership and require the course to remain published.
+
 Publishing requires at least one module and one lesson. Public course details
 include the curriculum outline but do not expose lesson content. Paid-course
-enrollment remains disabled until verified checkout is available. Student
-progress reflects lessons explicitly marked complete. View metrics come from
+enrollment requires both a successful order and a successful payment record;
+there is no checkout UI or payment-provider integration yet. Student progress is
+calculated from completed lessons and the current published curriculum. Recent
+lesson access is not tracked, and duration, difficulty, outcomes, and
+prerequisites are not fields in the current course schema. View metrics come from
 `CourseView` records; no watch time or payouts are fabricated. Recorded payment
 totals are database records, not provider-verified settlements.
 

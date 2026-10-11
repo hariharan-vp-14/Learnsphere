@@ -1,4 +1,4 @@
-import { BookOpen, ChevronDown, CircleUserRound, LogOut } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, CircleUserRound, LogOut } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getApiErrorMessage } from '../api/axios'
@@ -10,7 +10,10 @@ function CourseHeader() {
   const [signOutError, setSignOutError] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const profileRef = useRef(null)
-  const userRoles = user?.roles || (user ? [user.role] : [])
+  const userRoles = (user?.roles || (user ? [user.role] : []))
+    .map((role) => String(role).toUpperCase())
+  const isAdmin = userRoles.includes('ADMIN')
+    || String(user?.role || '').toUpperCase() === 'ADMIN'
 
   useEffect(() => {
     if (!profileOpen) return undefined
@@ -59,6 +62,20 @@ function CourseHeader() {
           </Link>
         )}
         {user ? (
+          <>
+          {isAdmin && (
+            <Link
+              aria-label="Admin dashboard"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#667c32] bg-[#667c32] px-3 text-white no-underline shadow-sm transition hover:border-[#52672a] hover:bg-[#52672a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7]"
+              title="Admin dashboard"
+              to="/admin/dashboard"
+            >
+              <span className="grid size-6 place-items-center rounded-full bg-white text-[#52672a]">
+                <Check className="size-4" strokeWidth={3} aria-hidden="true" />
+              </span>
+              <span className="text-xs font-extrabold">Admin dashboard</span>
+            </Link>
+          )}
           <div className="relative" ref={profileRef}>
             <button
               aria-expanded={profileOpen}
@@ -123,6 +140,7 @@ function CourseHeader() {
               </section>
             )}
           </div>
+          </>
         ) : (
           <Link className="rounded-xl bg-[#4f6125] px-4 py-2.5 text-xs font-bold text-white no-underline transition hover:bg-[#354418] sm:text-sm" to="/login">
             Sign in

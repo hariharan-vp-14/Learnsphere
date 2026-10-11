@@ -21,18 +21,40 @@ const getParamId = (req, key) => {
   return id;
 };
 
+const getCourseIdentifier = (req) => {
+  if (req.params.slug) return req.params.slug;
+  const { courseId, courseSlug, slug } = req.body || {};
+  const identifier = courseId ?? courseSlug ?? slug;
+  if ((typeof identifier === "string" && identifier.trim())
+      || (Number.isSafeInteger(identifier) && identifier > 0)) {
+    return typeof identifier === "string" ? identifier.trim() : identifier;
+  }
+  throw Object.assign(new Error("Provide a valid courseId or courseSlug"), { statusCode: 400 });
+};
+
 const enroll = respond(
   "Unable to enroll in course",
-  (req) => enrollmentService.enrollInCourse(req.params.slug, req.user.id),
+  (req) => enrollmentService.enrollInCourse(getCourseIdentifier(req), req.user.id),
   201
 );
-const getEnrollment = respond(
+const getCourseEnrollment = respond(
   "Unable to retrieve enrollment",
   (req) => enrollmentService.getCourseEnrollment(req.params.slug, req.user.id)
 );
 const listMine = respond(
   "Unable to retrieve enrollments",
   (req) => enrollmentService.listStudentEnrollments(req.user.id)
+);
+const getEnrollmentById = respond(
+  "Unable to retrieve enrollment",
+  (req) => enrollmentService.getStudentEnrollment(getParamId(req, "enrollmentId"), req.user.id)
+);
+const getProgress = respond(
+  "Unable to retrieve course progress",
+  (req) => enrollmentService.getEnrollmentProgress(
+    getParamId(req, "enrollmentId"),
+    req.user.id
+  )
 );
 const getLesson = respond(
   "Unable to retrieve lesson",
@@ -51,4 +73,12 @@ const completeLesson = respond(
   )
 );
 
-module.exports = { completeLesson, enroll, getEnrollment, getLesson, listMine };
+module.exports = {
+  completeLesson,
+  enroll,
+  getCourseEnrollment,
+  getEnrollmentById,
+  getLesson,
+  getProgress,
+  listMine,
+};

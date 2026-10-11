@@ -1,7 +1,7 @@
 import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-function ProtectedRoute({ children, allowedRoles }) {
+function ProtectedRoute({ children, allowedRoles, requiredRole, allowTeacherApplicant = false }) {
   const { user, isLoading, authError } = useAuth()
 
   if (isLoading) {
@@ -30,7 +30,13 @@ function ProtectedRoute({ children, allowedRoles }) {
 
   if (!user) return <Navigate to="/login" replace />
   const userRoles = user.roles || [user.role]
-  if (allowedRoles && !allowedRoles.some((role) => userRoles.includes(role))) {
+  const isTeacherApplicant = allowTeacherApplicant
+    && user.role === 'STUDENT'
+    && ['PENDING', 'REJECTED'].includes(user.instructorProfile?.applicationStatus)
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/courses" replace />
+  }
+  if (!isTeacherApplicant && allowedRoles && !allowedRoles.some((role) => userRoles.includes(role))) {
     return <Navigate to="/courses" replace />
   }
   return children

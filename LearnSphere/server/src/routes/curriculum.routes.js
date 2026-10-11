@@ -11,10 +11,10 @@ const {
   updateModule,
 } = require("../controllers/curriculum.controller");
 const { protect } = require("../middleware/auth.middleware");
-const { requireRoles } = require("../middleware/role.middleware");
+const { requireApprovedInstructor } = require("../middleware/role.middleware");
 
 const router = express.Router();
-router.use(protect, requireRoles("INSTRUCTOR", "ADMIN"));
+router.use(protect, requireApprovedInstructor);
 router.get("/courses/:courseId/manage", getManageCourse);
 router.post("/courses/:courseId/modules", createModule);
 router.put("/courses/:courseId/modules/reorder", reorderModules);

@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const users = [];
 const studentProfiles = new Set();
 const instructorProfiles = new Map();
+const applicationReviews = [];
 const verificationEmails = [];
 let failEmailDelivery = false;
 const prismaMock = {
@@ -42,6 +43,9 @@ const prismaMock = {
       Object.assign(user, data);
       return user;
     },
+    count: async ({ where } = {}) => users.filter((user) =>
+      !where || user.role === where.role
+    ).length,
     updateMany: async ({ where, data }) => {
       const user = users.find(
         (candidate) =>
@@ -65,12 +69,13 @@ const prismaMock = {
   },
   instructorProfile: {
     findUnique: async ({ where }) => {
-      if (!instructorProfiles.has(where.userId)) return null;
-      const user = users.find((candidate) => candidate.id === where.userId);
+      const userId = where.userId ?? where.id;
+      if (!instructorProfiles.has(userId)) return null;
+      const user = users.find((candidate) => candidate.id === userId);
       return {
-        id: where.userId,
-        userId: where.userId,
-        ...instructorProfiles.get(where.userId),
+        id: userId,
+        userId,
+        ...instructorProfiles.get(userId),
         user: { emailVerifiedAt: user?.emailVerifiedAt || null },
       };
     },
@@ -87,7 +92,7 @@ const prismaMock = {
       [...instructorProfiles].flatMap(([userId, profile]) => {
         const user = users.find((candidate) => candidate.id === userId);
         if (
-          profile.applicationStatus !== where.applicationStatus
+          (where?.applicationStatus && profile.applicationStatus !== where.applicationStatus)
           || !user
           || !user.emailVerifiedAt
         ) return [];
@@ -108,7 +113,30 @@ const prismaMock = {
       instructorProfiles.set(where.userId, profile);
       return { userId: where.userId, ...profile, updatedAt: new Date() };
     },
+    updateMany: async ({ where, data }) => {
+      const profile = instructorProfiles.get(where.userId ?? where.id);
+      if (!profile || profile.applicationStatus !== where.applicationStatus) return { count: 0 };
+      Object.assign(profile, data);
+      return { count: 1 };
+    },
+    count: async ({ where } = {}) => [...instructorProfiles.values()].filter((profile) =>
+      !where || profile.applicationStatus === where.applicationStatus
+    ).length,
   },
+  instructorApplicationReview: {
+    create: async ({ data }) => {
+      const review = { id: applicationReviews.length + 1, reviewedAt: new Date(), ...data };
+      applicationReviews.push(review);
+      return review;
+    },
+    findMany: async ({ where }) => applicationReviews.filter(
+      (review) => review.instructorProfileId === where.instructorProfileId
+    ).map((review) => ({
+      ...review,
+      reviewer: { id: review.reviewerId, name: "Test Admin", email: "admin@gmail.com" },
+    })),
+  },
+  adminCapacityLock: { update: async () => ({ id: 1 }) },
   $transaction: async (callback) => callback(prismaMock),
 };
 
@@ -291,9 +319,10 @@ test("auth routes satisfy the registration and session checklist", async () => {
       expectedRole: "INSTRUCTOR",
     }),
   });
-  assert.equal(registeredTeacherLogin.status, 403, "Pending applicants cannot sign in as teachers");
+  assert.equal(registeredTeacherLogin.status, 200, "Pending applicants can sign in to view application status");
   const dualRoleLogin = await registeredTeacherLogin.json();
-  assert.match(dualRoleLogin.message, /awaiting administrator approval/i);
+  assert.equal(dualRoleLogin.data.instructorProfile.applicationStatus, "PENDING");
+  assert.deepEqual(dualRoleLogin.data.roles, ["STUDENT"]);
 
   const newTeacherRegistrationResponse = await request("/api/auth/teacher-applications", {
     method: "POST",
@@ -344,7 +373,10 @@ test("auth routes satisfy the registration and session checklist", async () => {
       expectedRole: "INSTRUCTOR",
     }),
   });
-  assert.equal(verifiedNewTeacherLogin.status, 403, "Email verification does not bypass teacher approval");
+  assert.equal(verifiedNewTeacherLogin.status, 200, "Pending applicants can sign in to view application status");
+  const pendingTeacherLogin = await verifiedNewTeacherLogin.json();
+  assert.equal(pendingTeacherLogin.data.instructorProfile.applicationStatus, "PENDING");
+  assert.deepEqual(pendingTeacherLogin.data.roles, ["STUDENT"]);
 
   const admin = {
     id: users.length + 1,
@@ -357,10 +389,23 @@ test("auth routes satisfy the registration and session checklist", async () => {
   users.push(admin);
   const adminLoginResponse = await request("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email: admin.email, password: "Admin-Password-42" }),
+    body: JSON.stringify({
+      email: admin.email,
+      password: "Admin-Password-42",
+      expectedRole: "STUDENT",
+    }),
   });
   assert.equal(adminLoginResponse.status, 200);
+  const adminLogin = await adminLoginResponse.json();
+  assert.equal(adminLogin.data.role, "ADMIN");
+  assert.ok(adminLogin.data.roles.includes("ADMIN"));
   const adminCookie = adminLoginResponse.headers.get("set-cookie").split(";", 1)[0];
+  const pendingTeacherCookie = verifiedNewTeacherLogin.headers.get("set-cookie").split(";", 1)[0];
+  assert.equal(
+    (await request("/api/admin/dashboard", { headers: { Cookie: pendingTeacherCookie } })).status,
+    403,
+    "Pending teachers cannot access administrator endpoints"
+  );
   const unverifiedApplicant = {
     id: users.length + 1,
     name: "Unverified Applicant",
@@ -389,13 +434,27 @@ test("auth routes satisfy the registration and session checklist", async () => {
   });
   assert.equal(pendingApplicationsResponse.status, 200, "Admins can review verified teacher applications");
   const pendingApplications = await pendingApplicationsResponse.json();
-  assert.ok(pendingApplications.data.some((application) => application.userId === newTeacher.id));
-  const approvalResponse = await request(`/api/admin/teacher-applications/${newTeacher.id}`, {
-    method: "PATCH",
+  assert.ok(pendingApplications.data.data.some((application) => application.userId === newTeacher.id));
+  const dashboardResponse = await request("/api/admin/dashboard", {
     headers: { Cookie: adminCookie },
-    body: JSON.stringify({ applicationStatus: "APPROVED" }),
   });
-  assert.equal(approvalResponse.status, 200, "An admin can approve an application");
+  assert.equal(dashboardResponse.status, 200);
+  assert.ok("pendingApplications" in (await dashboardResponse.json()).data.stats);
+  const invalidPageResponse = await request("/api/admin/teacher-applications?page=0", {
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(invalidPageResponse.status, 400);
+  const concurrentApprovals = await Promise.all([1, 2].map(() => request(
+    `/api/admin/teacher-applications/${newTeacher.id}/approve`,
+    { method: "PATCH", headers: { Cookie: adminCookie } }
+  )));
+  assert.deepEqual(
+    concurrentApprovals.map((response) => response.status).sort(),
+    [200, 409],
+    "Only one concurrent review can finalize a pending application"
+  );
+  assert.equal(users.find((user) => user.id === newTeacher.id).role, "INSTRUCTOR");
+  assert.equal(applicationReviews.length, 1, "Approval is written to review history");
   const repeatedDecisionResponse = await request(
     `/api/admin/teacher-applications/${newTeacher.id}`,
     {
@@ -422,6 +481,39 @@ test("auth routes satisfy the registration and session checklist", async () => {
   const approvedTeacher = await approvedTeacherLogin.json();
   assert.ok(approvedTeacher.data.roles.includes("INSTRUCTOR"));
   assert.equal(approvedTeacher.data.instructorProfile.applicationStatus, "APPROVED");
+  const approvedRefresh = await request("/api/auth/me", {
+    headers: { Cookie: approvedTeacherLogin.headers.get("set-cookie").split(";", 1)[0] },
+  });
+  assert.equal((await approvedRefresh.json()).data.instructorProfile.applicationStatus, "APPROVED");
+
+  const rejectedTeacher = {
+    id: users.length + 1,
+    name: "Rejected Teacher",
+    email: "rejectedteacher@gmail.com",
+    passwordHash: await bcrypt.hash("Rejected-Teacher-42", 4),
+    role: "STUDENT",
+    emailVerifiedAt: new Date(),
+  };
+  users.push(rejectedTeacher);
+  studentProfiles.add(rejectedTeacher.id);
+  instructorProfiles.set(rejectedTeacher.id, { applicationStatus: "PENDING" });
+  const rejectionResponse = await request(
+    `/api/admin/teacher-applications/${rejectedTeacher.id}/reject`,
+    {
+      method: "PATCH",
+      headers: { Cookie: adminCookie },
+      body: JSON.stringify({ reason: "Please provide more detail about your teaching experience." }),
+    }
+  );
+  assert.equal(rejectionResponse.status, 200);
+  assert.equal(instructorProfiles.get(rejectedTeacher.id).rejectionReason,
+    "Please provide more detail about your teaching experience.");
+  assert.equal(users.find((user) => user.id === rejectedTeacher.id).role, "STUDENT");
+  const reviewHistory = await request(
+    `/api/admin/teacher-applications/${rejectedTeacher.id}/reviews`,
+    { headers: { Cookie: adminCookie } }
+  );
+  assert.equal((await reviewHistory.json()).data[0].applicationStatus, "REJECTED");
 
   const nonGmailRegisterResponse = await request("/api/auth/register", {
     method: "POST",

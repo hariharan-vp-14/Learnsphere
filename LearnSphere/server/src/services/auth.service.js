@@ -215,6 +215,9 @@ const registerTeacherApplication = async (input) => {
         },
         update: {
           applicationStatus: "PENDING",
+          reviewerId: null,
+          reviewedAt: null,
+          rejectionReason: null,
           ...profileData,
         },
       });
@@ -301,25 +304,16 @@ const login = async (input) => {
     where: { userId: user.id },
     select: { applicationStatus: true },
   });
-  if (
-    expectedRole === "INSTRUCTOR"
-    && instructorProfile?.applicationStatus === "PENDING"
-  ) {
-    throw createAuthError("Your teacher application is awaiting administrator approval", 403);
-  }
-  if (
-    expectedRole === "INSTRUCTOR"
-    && instructorProfile?.applicationStatus === "REJECTED"
-  ) {
-    throw createAuthError("Your teacher application was not approved", 403);
-  }
-
+  const isTeacherApplicant = Boolean(instructorProfile);
   const roles = await getUserRoles(user, instructorProfile);
-  const roleMatches = expectedRole === undefined || roles.includes(expectedRole);
+  const roleMatches = user.role === "ADMIN"
+    || expectedRole === undefined
+    || roles.includes(expectedRole)
+    || (expectedRole === "INSTRUCTOR" && isTeacherApplicant);
   if (!roleMatches) {
     throw createAuthError(
       expectedRole === "INSTRUCTOR"
-        ? "This account is not an approved teacher account. Submit a teacher application or use Student sign in."
+        ? "This account is not a teacher applicant. Submit a teacher application or use Student sign in."
         : "This account is not a student account. Choose Teacher sign in.",
       403
     );
@@ -420,6 +414,8 @@ const getProfile = async (id) => {
           qualifications: true,
           profileImageUrl: true,
           teachingInterests: true,
+          reviewedAt: true,
+          rejectionReason: true,
         },
       },
     },

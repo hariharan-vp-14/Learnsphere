@@ -72,6 +72,8 @@ model User {
   courses          Course[]          @relation("InstructorCourses")
   studentProfile   StudentProfile?
   instructorProfile InstructorProfile?
+  reviewedTeacherApplications InstructorApplicationReview[] @relation("ApplicationReviewer")
+  reviewedInstructorProfiles InstructorProfile[]            @relation("InstructorProfileReviewer")
   enrollments      Enrollment[]
   lessonProgress   LessonProgress[]
   attempts         Attempt[]
@@ -99,8 +101,32 @@ model InstructorProfile {
   qualifications        String?                     @db.Text
   profileImageUrl       String?
   teachingInterests     String?                     @db.Text
+  reviewerId            Int?
+  reviewedAt            DateTime?
+  rejectionReason       String?                     @db.Text
+  reviewer              User?                       @relation("InstructorProfileReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviews               InstructorApplicationReview[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
+}
+
+model InstructorApplicationReview {
+  id                  Int                         @id @default(autoincrement())
+  instructorProfileId Int
+  reviewerId          Int
+  applicationStatus   InstructorApplicationStatus
+  rejectionReason     String?                     @db.Text
+  reviewedAt          DateTime                    @default(now())
+  instructorProfile   InstructorProfile           @relation(fields: [instructorProfileId], references: [id], onDelete: Cascade)
+  reviewer            User                        @relation("ApplicationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([instructorProfileId, reviewedAt])
+  @@index([reviewerId, reviewedAt])
+}
+
+model AdminCapacityLock {
+  id        Int      @id
+  updatedAt DateTime @updatedAt
 }
 
 model Course {

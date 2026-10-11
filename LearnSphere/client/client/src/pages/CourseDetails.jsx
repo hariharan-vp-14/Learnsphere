@@ -15,12 +15,12 @@ function CourseDetails() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const userRoles = user?.roles || (user ? [user.role] : [])
-  const hasStudentAccess = userRoles.includes('STUDENT')
+  const hasStudentAccess = user?.role === 'STUDENT'
   const [course, setCourse] = useState(null)
   const [loadedSlug, setLoadedSlug] = useState('')
   const [error, setError] = useState('')
   const [enrollment, setEnrollment] = useState(null)
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
   const [enrollmentError, setEnrollmentError] = useState('')
   const [viewTrackingError, setViewTrackingError] = useState('')
@@ -31,6 +31,10 @@ function CourseDetails() {
       .then(({ data }) => {
         if (!isCurrent) return
         setCourse(data.data)
+        setError('')
+        setEnrollment(null)
+        setEnrollmentError('')
+        setViewTrackingError('')
         let visitorId = sessionStorage.getItem(`learnsphere-course-view:${slug}`)
         if (!visitorId) {
           visitorId = crypto.randomUUID()
@@ -43,14 +47,18 @@ function CourseDetails() {
             }
           })
         if (hasStudentAccess) {
-          studioApi.get(`/courses/${encodeURIComponent(slug)}/enrollment`)
-            .then((result) => {
-              if (isCurrent) setEnrollment(result.data.data)
-            })
-            .catch((requestError) => {
-              if (isCurrent) setEnrollmentError(getApiErrorMessage(requestError, 'Unable to check course enrollment'))
-            })
-        }
+            setEnrollmentLoading(true)
+            studioApi.get(`/courses/${encodeURIComponent(slug)}/enrollment`)
+              .then((result) => {
+                if (isCurrent) setEnrollment(result.data.data)
+              })
+              .catch((requestError) => {
+                if (isCurrent) setEnrollmentError(getApiErrorMessage(requestError, 'Unable to check course enrollment'))
+              })
+              .finally(() => {
+                if (isCurrent) setEnrollmentLoading(false)
+              })
+          }
       })
       .catch((requestError) => {
         if (isCurrent) setError(getApiErrorMessage(requestError, 'Unable to load this course'))
@@ -69,7 +77,7 @@ function CourseDetails() {
     setEnrolling(true)
     setEnrollmentError('')
     try {
-      const { data } = await studioApi.post(`/courses/${encodeURIComponent(slug)}/enroll`)
+      const { data } = await studioApi.post('/enrollments', { courseId: course.id })
       setEnrollment(data.data)
     } catch (requestError) {
       setEnrollmentError(getApiErrorMessage(requestError, 'Unable to enroll in this course'))
@@ -133,8 +141,10 @@ function CourseDetails() {
                   <p className="m-0 text-xs font-semibold text-[#535b4a]">Course price</p>
                   <p className="mb-0 mt-1 text-2xl font-extrabold text-[#354418]">{formatPrice(course.price)}</p>
                   {hasStudentAccess && (
-                    enrollment ? (
-                      <button className="mt-4 w-full rounded-xl bg-[#4f6125] px-4 py-3 text-sm font-bold text-white" onClick={() => navigate('/learning')} type="button">
+                    enrollmentLoading ? (
+                      <p className="mb-0 mt-4 text-xs text-[#535b4a]" role="status">Checking your enrollment…</p>
+                    ) : enrollment ? (
+                      <button className="mt-4 w-full rounded-xl bg-[#4f6125] px-4 py-3 text-sm font-bold text-white" onClick={() => navigate(`/learning?enrollmentId=${enrollment.id}`)} type="button">
                         Continue learning
                       </button>
                     ) : Number(course.price) === 0 ? (
@@ -142,7 +152,9 @@ function CourseDetails() {
                         {enrolling ? 'Enrolling…' : 'Enroll for free'}
                       </button>
                     ) : (
-                      <p className="mb-0 mt-3 text-xs leading-5 text-[#535b4a]">Online checkout is not available yet.</p>
+                      <p className="mb-0 mt-3 text-xs leading-5 text-[#535b4a]">
+                        Paid-course checkout is not available yet. Payment is required to access this course.
+                      </p>
                     )
                   )}
                   {!user && <Link className="mt-4 inline-block text-xs font-bold text-[#4f6125] underline" to="/login">Sign in to enroll</Link>}
@@ -157,15 +169,42 @@ function CourseDetails() {
                     {course.modules.map((module) => (
                       <article className="rounded-2xl bg-[#f5f7ef] p-4" key={module.id}>
                         <h3 className="m-0 text-sm font-bold text-[#394625]">{module.title}</h3>
+                        {module.description && <p className="mb-0 mt-2 text-sm leading-6 text-[#535b4a]">{module.description}</p>}
                         <p className="mb-0 mt-1 text-xs text-[#535b4a]">{module.lessons.length} {module.lessons.length === 1 ? 'lesson' : 'lessons'}</p>
                         {module.lessons.length > 0 && (
-                          <ul className="mb-0 mt-3 grid gap-2 pl-5 text-sm text-[#30382a]">
-                            {module.lessons.map((lesson) => <li key={lesson.id}>{lesson.title}</li>)}
-                          </ul>
+                          <ol className="mb-0 mt-3 grid gap-3 pl-5 text-sm text-[#30382a]">
+                            {module.lessons.map((lesson) => (
+                              <li key={lesson.id}>
+                                <span className="font-semibold">{lesson.title}</span>
+                                {lesson.description && <p className="mb-0 mt-1 text-xs leading-5 text-[#535b4a]">{lesson.description}</p>}
+                              </li>
+                            ))}
+                          </ol>
                         )}
                       </article>
                     ))}
                   </div>
+                </section>
+              )}
+              {(course.instructor.instructorProfile?.professionalBio
+                || course.instructor.instructorProfile?.expertise
+                || course.instructor.instructorProfile?.qualifications) && (
+                <section className="border-t border-[#edf0e7] p-7 sm:p-10" aria-labelledby="instructor-profile">
+                  <p className="mb-2 text-[10px] font-extrabold tracking-[1.5px] text-[#52672a]">YOUR INSTRUCTOR</p>
+                  <h2 className="m-0 text-xl font-bold text-[#27301e]" id="instructor-profile">{course.instructor.name}</h2>
+                  {course.instructor.instructorProfile.professionalBio && (
+                    <p className="mb-0 mt-3 max-w-[700px] text-sm leading-7 text-[#535b4a]">
+                      {course.instructor.instructorProfile.professionalBio}
+                    </p>
+                  )}
+                  <dl className="mb-0 mt-4 grid gap-3 text-sm text-[#394625] sm:grid-cols-2">
+                    {course.instructor.instructorProfile.expertise && (
+                      <div><dt className="font-bold">Expertise</dt><dd className="mb-0 mt-1">{course.instructor.instructorProfile.expertise}</dd></div>
+                    )}
+                    {course.instructor.instructorProfile.qualifications && (
+                      <div><dt className="font-bold">Qualifications</dt><dd className="mb-0 mt-1">{course.instructor.instructorProfile.qualifications}</dd></div>
+                    )}
+                  </dl>
                 </section>
               )}
             </article>

@@ -5,6 +5,7 @@ import coursesApi from '../api/courses'
 import { getApiErrorMessage } from '../api/axios'
 import studioApi from '../api/studio'
 import CourseHeader from '../components/CourseHeader'
+import { useAuth } from '../context/AuthContext'
 
 const emptyForm = { title: '', description: '', price: '0.00' }
 
@@ -13,6 +14,10 @@ const formatPrice = (price) => Number(price) === 0
   : new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(price))
 
 function InstructorDashboard() {
+  const { user } = useAuth()
+  const applicationStatus = user.instructorProfile?.applicationStatus
+  const applicationPending = applicationStatus === 'PENDING'
+  const applicationRejected = applicationStatus === 'REJECTED'
   const [courses, setCourses] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
@@ -35,6 +40,7 @@ function InstructorDashboard() {
   }
 
   useEffect(() => {
+    if (applicationPending || applicationRejected) return undefined
     let isCurrent = true
     coursesApi.get('/mine')
       .then(({ data }) => {
@@ -49,9 +55,10 @@ function InstructorDashboard() {
     return () => {
       isCurrent = false
     }
-  }, [])
+  }, [applicationPending, applicationRejected])
 
   useEffect(() => {
+    if (applicationPending || applicationRejected) return undefined
     let isCurrent = true
     studioApi.get('/instructor/dashboard')
       .then(({ data }) => {
@@ -63,10 +70,48 @@ function InstructorDashboard() {
     return () => {
       isCurrent = false
     }
-  }, [])
+  }, [applicationPending, applicationRejected])
 
   const courseList = courses || []
   const isLoading = courses === null
+
+  if (applicationPending || applicationRejected) {
+    return (
+      <main className="min-h-screen bg-[#f7f8f2] px-5 sm:px-8 lg:px-14">
+        <div className="mx-auto max-w-[1100px]">
+          <CourseHeader />
+          <section className="mx-auto my-12 max-w-2xl rounded-3xl border border-[#e1e5d7] bg-white p-7 shadow-[0_20px_60px_rgba(47,57,31,0.08)] sm:my-16 sm:p-10">
+            <p className="mb-2 text-[10px] font-extrabold tracking-[1.6px] text-[#52672a]">TEACHER APPLICATION</p>
+            <h1 className="m-0 text-3xl font-extrabold tracking-tight text-[#27301e]">
+              {applicationPending ? 'Application pending review' : 'Application not approved'}
+            </h1>
+            {applicationPending ? (
+              <p className="mb-0 mt-4 text-sm leading-7 text-[#535b4a]">
+                Your application is awaiting administrator approval. You can sign in and check back here, but instructor tools and publishing are unavailable until approval.
+              </p>
+            ) : (
+              <>
+                <p className="mt-4 text-sm leading-7 text-[#535b4a]">
+                  Your teacher application was not approved. Instructor tools and publishing remain unavailable.
+                </p>
+                {user.instructorProfile.rejectionReason && (
+                  <p className="mt-4 whitespace-pre-wrap rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                    <strong>Review feedback:</strong> {user.instructorProfile.rejectionReason}
+                  </p>
+                )}
+                <Link className="mt-3 inline-flex text-sm font-bold text-[#4f6125] underline" to="/register?role=INSTRUCTOR">
+                  Update teacher application
+                </Link>
+              </>
+            )}
+            <p className="mb-0 mt-6 border-t border-[#edf0e7] pt-5 text-sm text-[#535b4a]">
+              Signed in as {user.name} · <Link className="font-bold text-[#4f6125] underline" to="/courses">Browse courses as a student</Link>
+            </p>
+          </section>
+        </div>
+      </main>
+    )
+  }
 
   function startCreate() {
     setEditingId(null)

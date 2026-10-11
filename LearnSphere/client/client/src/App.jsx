@@ -12,6 +12,8 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import StudentLearning from './pages/StudentLearning'
 import StudentDashboard from './pages/StudentDashboard'
+import AdminDashboard from './pages/AdminDashboard'
+import TeacherApplicationDashboard from './pages/TeacherApplicationDashboard'
 import VerificationPending from './pages/VerificationPending'
 
 const IntroPage = lazy(() => import('./pages/IntroPage'))
@@ -118,8 +120,24 @@ function App() {
       <Route
         path="/instructor/courses"
         element={
-          <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
+          <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']} allowTeacherApplicant>
             <InstructorDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teacher/application"
+        element={
+          <ProtectedRoute allowTeacherApplicant>
+            <TeacherApplicationDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/dashboard"
+        element={
+          <ProtectedRoute requiredRole="ADMIN">
+            <AdminDashboard />
           </ProtectedRoute>
         }
       />
@@ -142,7 +160,7 @@ function App() {
       <Route
         path="/learning"
         element={
-          <ProtectedRoute allowedRoles={['STUDENT']}>
+          <ProtectedRoute requiredRole="STUDENT">
             <StudentLearning />
           </ProtectedRoute>
         }
@@ -150,7 +168,7 @@ function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute allowedRoles={['STUDENT']}>
+          <ProtectedRoute requiredRole="STUDENT">
             <StudentDashboard />
           </ProtectedRoute>
         }

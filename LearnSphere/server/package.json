@@ -7,7 +7,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
-    "create:instructor": "node scripts/create-instructor.js"
+    "create:instructor": "node scripts/create-instructor.js",
+    "provision:admin": "node scripts/provision-admin.js"
   },
   "keywords": [],
   "author": "",

@@ -67,8 +67,15 @@ const prismaMock = {
   },
   instructorProfile: {
     findUnique: async ({ where }) =>
-      [10, 11].includes(where.userId)
-        ? { id: where.userId, applicationStatus: "APPROVED" }
+      [10, 11, 12, 13].includes(where.userId)
+        ? {
+          id: where.userId,
+          applicationStatus: where.userId === 12
+            ? "PENDING"
+            : where.userId === 13
+              ? "REJECTED"
+              : "APPROVED",
+        }
         : null,
   },
   user: {
@@ -76,8 +83,11 @@ const prismaMock = {
       id: where.id,
       name: `User ${where.id}`,
       email: `user${where.id}@gmail.com`,
-      role: "STUDENT",
+      role: [10, 11].includes(where.id) ? "INSTRUCTOR" : "STUDENT",
       emailVerifiedAt: new Date(),
+      instructorProfile: [10, 11].includes(where.id)
+        ? { applicationStatus: "APPROVED" }
+        : null,
     }),
   },
 };
@@ -144,6 +154,15 @@ test("public catalog only exposes published courses and instructor actions are r
     role: "STUDENT",
   });
   assert.equal(studentCourseManagement.status, 403);
+  for (const teacherId of [12, 13]) {
+    const blockedDraft = await request("/api/courses", {
+      role: "STUDENT",
+      id: teacherId,
+      method: "POST",
+      body: JSON.stringify({ title: `Blocked ${teacherId}`, description: "Private draft", price: 0 }),
+    });
+    assert.equal(blockedDraft.status, 403, "Pending and rejected teacher applications cannot create instructor content");
+  }
 
   const invalidInstructorCreate = await request("/api/courses", {
     role: "INSTRUCTOR",
@@ -173,6 +192,19 @@ test("public catalog only exposes published courses and instructor actions are r
   assert.equal(hiddenDetail.status, 404, "Draft course is not public");
   const emptyCatalog = await request("/api/courses");
   assert.deepEqual((await emptyCatalog.json()).data, []);
+
+  for (const teacherId of [12, 13]) {
+    const blockedPublish = await request(`/api/courses/${created.id}/publish`, {
+      role: "STUDENT",
+      id: teacherId,
+      method: "POST",
+    });
+    assert.equal(
+      blockedPublish.status,
+      403,
+      "Pending and rejected teacher applications cannot publish through the API"
+    );
+  }
 
   const otherInstructorEdit = await request(`/api/courses/${created.id}`, {
     role: "INSTRUCTOR",

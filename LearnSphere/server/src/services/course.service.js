@@ -71,7 +71,20 @@ const createUniqueSlug = async (title, excludeCourseId) => {
 };
 
 const courseInclude = {
-  instructor: { select: { id: true, name: true } },
+  instructor: {
+    select: {
+      id: true,
+      name: true,
+      instructorProfile: {
+        select: {
+          professionalBio: true,
+          expertise: true,
+          qualifications: true,
+          profileImageUrl: true,
+        },
+      },
+    },
+  },
   _count: { select: { modules: true, enrollments: true } },
 };
 

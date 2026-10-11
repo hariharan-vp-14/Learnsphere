@@ -15,15 +15,59 @@ const respond = (fallbackMessage, handler) => async (req, res) => {
 
 const listTeacherApplications = respond(
   "Unable to load teacher applications",
-  () => adminService.listTeacherApplications()
+  (req) => adminService.listTeacherApplications(req.query)
+);
+
+const getDashboard = respond(
+  "Unable to load administrator dashboard",
+  () => adminService.getAdminDashboard()
+);
+
+const getTeacherApplication = respond(
+  "Unable to load teacher application",
+  (req) => adminService.getTeacherApplication(req.params.id)
+);
+
+const getReviewHistory = respond(
+  "Unable to load review history",
+  (req) => adminService.getReviewHistory(req.params.id)
+);
+
+const approveTeacherApplication = respond(
+  "Unable to approve teacher application",
+  (req) => adminService.decideTeacherApplicationByProfileId(
+    req.params.id,
+    "APPROVED",
+    req.user.id
+  )
+);
+
+const rejectTeacherApplication = respond(
+  "Unable to reject teacher application",
+  (req) => adminService.decideTeacherApplicationByProfileId(
+    req.params.id,
+    "REJECTED",
+    req.user.id,
+    req.body?.reason
+  )
 );
 
 const decideTeacherApplication = respond(
   "Unable to update teacher application",
   (req) => adminService.decideTeacherApplication(
     req.params.userId,
-    req.body?.applicationStatus
+    req.body?.applicationStatus,
+    req.user.id,
+    req.body?.rejectionReason
   )
 );
 
-module.exports = { listTeacherApplications, decideTeacherApplication };
+module.exports = {
+  approveTeacherApplication,
+  decideTeacherApplication,
+  getDashboard,
+  getReviewHistory,
+  getTeacherApplication,
+  listTeacherApplications,
+  rejectTeacherApplication,
+};

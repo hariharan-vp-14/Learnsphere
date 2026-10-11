@@ -91,8 +91,11 @@ const prismaMock = {
       id: where.id,
       name: `User ${where.id}`,
       email: `user${where.id}@gmail.com`,
-      role: "STUDENT",
+      role: where.id === 10 ? "INSTRUCTOR" : "STUDENT",
       emailVerifiedAt: new Date(),
+      instructorProfile: where.id === 10
+        ? { applicationStatus: "APPROVED" }
+        : null,
     }),
   },
   course: {
