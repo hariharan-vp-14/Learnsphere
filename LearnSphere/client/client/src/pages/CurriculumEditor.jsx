@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Check, Send } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { getApiErrorMessage } from '../api/axios'
+import coursesApi from '../api/courses'
 import studioApi from '../api/studio'
 import CourseHeader from '../components/CourseHeader'
 
@@ -19,6 +21,7 @@ function CurriculumEditor() {
   const [lessonEdit, setLessonEdit] = useState(blankLesson)
   const [lessonForms, setLessonForms] = useState({})
   const [busy, setBusy] = useState(false)
+  const [publishing, setPublishing] = useState(false)
 
   async function loadCourse() {
     const { data } = await studioApi.get(`/curriculum/courses/${courseId}/manage`)
@@ -45,6 +48,21 @@ function CurriculumEditor() {
       setError(getApiErrorMessage(requestError, 'Unable to save curriculum'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function publishCourse() {
+    setPublishing(true)
+    setError('')
+    setNotice('')
+    try {
+      await coursesApi.post(`/${courseId}/publish`)
+      await loadCourse()
+      setNotice('Course published to the public catalog.')
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Unable to publish course'))
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -95,9 +113,28 @@ function CurriculumEditor() {
         <CourseHeader />
         <section className="py-10 sm:py-14">
           <Link className="text-sm font-bold text-[#4f6125] no-underline" to="/instructor/courses">← Back to courses</Link>
-          <p className="mb-2 mt-7 text-[10px] font-extrabold tracking-[1.6px] text-[#52672a]">COURSE CREATION STUDIO</p>
-          <h1 className="m-0 text-3xl font-extrabold tracking-tight text-[#27301e]">{course?.title || 'Course curriculum'}</h1>
-          <p className="mb-0 mt-2 text-sm text-[#535b4a]">Organize modules and lessons. Lesson content is available only to enrolled students.</p>
+          <div className="mt-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <p className="mb-2 text-[10px] font-extrabold tracking-[1.6px] text-[#52672a]">COURSE CREATION STUDIO</p>
+              <h1 className="m-0 text-3xl font-extrabold tracking-tight text-[#27301e]">{course?.title || 'Course curriculum'}</h1>
+              <p className="mb-0 mt-2 text-sm text-[#535b4a]">Organize modules and lessons. Lesson content is available only to enrolled students.</p>
+            </div>
+            {course && (
+              <button
+                className="inline-flex h-12 items-center justify-center gap-2 self-start rounded-xl bg-[#4f6125] px-5 text-sm font-bold text-white transition hover:bg-[#354418] disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
+                disabled={publishing || busy || course.status === 'PUBLISHED' || !course.modules.some((module) => module.lessons.length > 0)}
+                onClick={publishCourse}
+                type="button"
+              >
+                {course.status === 'PUBLISHED'
+                  ? <><Check className="size-4" aria-hidden="true" /> Published</>
+                  : <><Send className="size-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish course'}</>}
+              </button>
+            )}
+          </div>
+          {course && course.status !== 'PUBLISHED' && !course.modules.some((module) => module.lessons.length > 0) && (
+            <p className="mb-0 mt-3 text-xs text-[#535b4a]">Add at least one module and one lesson to enable publishing.</p>
+          )}
           {error && <p className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">{error}</p>}
           {notice && <p className="mt-5 rounded-xl border border-[#d4ddbd] bg-[#edf1e3] p-4 text-sm font-semibold text-[#354418]" role="status">{notice}</p>}
           {!course && !error && <p className="py-10 text-center text-sm text-[#535b4a]" role="status">Loading curriculum…</p>}

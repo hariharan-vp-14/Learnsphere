@@ -59,4 +59,7 @@ const provisionAdmin = async ({ name, email, password }) => {
   }
 };
 
-module.exports = { MAX_ADMINISTRATORS, provisionAdmin };
+module.exports = {
+  MAX_ADMINISTRATORS,
+  provisionAdmin,
+};

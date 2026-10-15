@@ -15,24 +15,31 @@ The Express API provides cookie-based authentication under `/api/auth`:
 | `POST` | `/api/auth/logout` | Clear the session cookie. |
 | `GET` | `/api/auth/protected` | Example route requiring authentication. |
 
-The public home page (`/`) is a lightweight, animated LearnSphere AI introduction;
-it checks the existing cookie session before opening the appropriate dashboard.
-The 3D-style scene is CSS-based and is loaded only on that public route. The
-course catalog and course details at `/courses` require sign-in. The
-authentication welcome page provides separate Student and Teacher choices
-for sign-in and registration. Both use the same `User`, password hash,
-HTTP-only session cookie, and one-time email verification. Student signups
-create a linked `StudentProfile`. Teacher signups submit an application and a
-linked `InstructorProfile`; the account remains a student until an
-administrator approves the application. Pending and rejected applications
-cannot use teacher APIs or dashboards. Existing `INSTRUCTOR` users and course
-ownership remain intact.
+The public home page (`/`) is the animated LearnSphere AI introduction. Its
+Get Started action opens role selection at `/choose-role`; the intro restores a
+valid cookie session before offering the user's dashboard. Students register
+and sign in with email/password, while teachers and administrators use backend
+Google OAuth. The Google callback creates the existing HTTP-only session and
+redirects approved teachers to `/instructor/courses`, pending/rejected teacher
+applicants to `/teacher/application`, and administrators to `/admin/dashboard`.
+The course catalog and course details at `/courses` require sign-in. The
+visible admin entry on the intro remains, but does not replace server-side
+authorization. Students and teachers use the same `User`, password hash,
+HTTP-only session cookie, and email-verification system. Student signups create a linked
+`StudentProfile`. Teacher signups submit an application and a linked
+`InstructorProfile`; the account remains a student until an administrator
+approves the application. Pending and rejected applications cannot use teacher
+APIs or dashboards. Existing `INSTRUCTOR` users and course ownership remain
+intact.
 
 The database role enum remains `STUDENT`, `INSTRUCTOR`, and `ADMIN`;
 `INSTRUCTOR` is the canonical approved teacher role. Applicants use the
 existing `STUDENT` authentication role while their separate instructor-profile
 application status is `PENDING` or `REJECTED`, which lets them sign in without
-granting instructor privileges. Public registrations cannot assign roles.
+granting instructor privileges. Public student and teacher registrations
+cannot assign roles. Administrator accounts are never created through a
+public endpoint; use the locked `npm run provision:admin` process to
+pre-provision them before Google sign-in.
 
 `/admin/dashboard` is the admin-only application review UI. Its API includes
 `GET /api/admin/dashboard`, paginated/searchable
@@ -46,16 +53,21 @@ store reviewer/time and append to review history. `/api/auth/me` and login
 return current database role and application status; protected APIs do not
 trust JWT role claims.
 
-At most five active (`User.role = ADMIN`) accounts may exist. Provisioning is
-available only through `npm run provision:admin` using
+At most five active (`User.role = ADMIN`) accounts may exist. Initial
+administrator provisioning remains available through
+`npm run provision:admin` using
 `ADMIN_PROVISION_CONFIRM=CREATE_ADMIN`, `ADMIN_PROVISION_NAME`,
 `ADMIN_PROVISION_EMAIL`, and `ADMIN_PROVISION_PASSWORD` from the private
 `server/.env`. It refuses to promote existing accounts. All provisioners lock
 the singleton `AdminCapacityLock` row inside a MySQL transaction before
 counting/inserting, serializing concurrent attempts. This is a five-active-
-admins limit, not a lifetime account count. The initial admin bootstrap uses
-the same bounded command. Ordinary admin approval endpoints cannot provision
-administrators.
+admins limit, not a lifetime account count. Ordinary teacher-approval
+endpoints cannot provision administrators.
+
+The additive migration at
+`server/prisma/migrations/20261013143000_remove_admin_invitations/` removes the
+unused admin-invitation table. Apply pending migrations with
+`npx prisma migrate deploy` and run `npx prisma generate` from `server/`.
 
 The instructor-profile table is added by the additive migration at
 `server/prisma/migrations/20261009183000_instructor_profiles/`. It is not
@@ -113,8 +125,8 @@ Pending and rejected teacher applicants sign in and see their approval state at
 `/teacher/application`; instructor, curriculum, publishing, and student-list
 endpoints require the current `INSTRUCTOR` role with `APPROVED` profile status
 (or `ADMIN`). Pending teachers can neither create drafts nor publish through
-direct API calls. An administrator-only shield shortcut links to
-`/admin/dashboard`.
+direct API calls. The intro-page checkmark links administrators to
+`/admin/dashboard`; for other visitors it opens administrator sign-in.
 The instructor dashboard reports payment amounts only from database `Payment`
 records marked `SUCCESS` or `REFUNDED`, grouped by currency. This is a report
 of recorded payment state—not proof of a live provider settlement—and paid
@@ -201,6 +213,50 @@ your regular Google password. Keep these credentials private. For an existing
 database, apply the email-verification migration from `server/` with
 `npx prisma migrate deploy`, then regenerate the Prisma client with
 `npx prisma generate`.
+
+## Google OAuth setup
+
+Google OAuth is server-side only. The frontend sends the user to
+`/api/auth/google/start?role=<INSTRUCTOR|ADMIN>` on the backend, then the
+backend completes the code exchange and sets the usual LearnSphere session
+cookie after server-side verification. The Google redirect URI must match the
+configured callback URL exactly:
+
+`http://localhost:4000/api/auth/google/callback`
+
+Add that exact value to the Google Cloud Console under Authorized redirect URIs
+for the OAuth client. The app reads the values from environment variables and
+never exposes the client secret in browser code.
+
+```dotenv
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=replace_with_google_client_secret
+GOOGLE_CALLBACK_URL=http://localhost:4000/api/auth/google/callback
+GOOGLE_REDIRECT_URI=http://localhost:4000/api/auth/google/callback
+CLIENT_URL=http://localhost:5173
+```
+
+Google sign-in does not grant teacher or administrator privileges by itself.
+The callback validates the Google identity and then checks the existing
+LearnSphere account state: approved teachers must already be authorized in the
+application, and administrators must already be pre-provisioned as `ADMIN`
+users. Pending teacher applicants can sign in to view their application status,
+but they do not receive instructor dashboard access until an administrator
+approves the application.
+
+Troubleshooting:
+
+- If Google sign-in returns a redirect error, confirm the exact backend URL in
+  `GOOGLE_CALLBACK_URL` and in Google Cloud Console match exactly.
+- If `/api/auth/me` returns `401` immediately after the page loads, that is
+  expected for an unauthenticated visitor; a successful sign-in should set the
+  `token` cookie and then `/api/auth/me` should return the signed-in user.
+- If the browser is redirected back to the login page with a Google error, check
+  the `JWT_SECRET`, `CLIENT_URL`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`
+  values in `server/.env`.
+- If the app says the account is not authorized, verify that the Google email is
+  connected to an approved teacher or pre-provisioned administrator account in
+  the database; Google login alone does not elevate roles.
 
 The login cookie contains a signed, one-day JWT session token. It is `HttpOnly`,
 uses `SameSite=Lax`, and is marked `Secure` when `NODE_ENV=production`. Logout

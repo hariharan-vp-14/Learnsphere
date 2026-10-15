@@ -1,11 +1,200 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("node:crypto");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const { getPrismaClient } = require("../config/prisma");
 const { sendVerificationEmail } = require("./email.service");
 
 const prisma = getPrismaClient();
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || process.env.GOOGLE_REDIRECT_URI || "http://localhost:4000/api/auth/google/callback";
+const GOOGLE_REDIRECT_URI = GOOGLE_CALLBACK_URL;
+
+const getAuthIdentityModel = () => (prisma && prisma.authIdentity ? prisma.authIdentity : null);
+
+const getGoogleClient = () => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+    return null;
+  }
+  return new OAuth2Client({
+    clientId: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    redirectUri: GOOGLE_REDIRECT_URI,
+  });
+};
+
+const ensureValidGoogleRole = (role) => {
+  const normalizedRole = String(role || "INSTRUCTOR").toUpperCase();
+  if (normalizedRole !== "INSTRUCTOR" && normalizedRole !== "ADMIN") {
+    throw createAuthError("Google sign-in is available for teacher and administrator accounts only", 400);
+  }
+  return normalizedRole;
+};
+
+const buildGoogleState = (role) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  const nonce = crypto.randomBytes(16).toString("hex");
+  return {
+    nonce,
+    state: jwt.sign({ role: ensureValidGoogleRole(role), nonce }, process.env.JWT_SECRET, {
+      expiresIn: "10m",
+    }),
+  };
+};
+
+const verifyGoogleState = (state) => {
+  if (!state) {
+    throw createAuthError("Google sign-in request is invalid or expired", 400);
+  }
+
+  try {
+    const payload = jwt.verify(state, process.env.JWT_SECRET);
+    const role = ensureValidGoogleRole(payload.role);
+    return { role, nonce: payload.nonce };
+  } catch (error) {
+    throw createAuthError("Google sign-in request is invalid or expired", 400);
+  }
+};
+
+const persistGoogleIdentity = async ({ userId, providerUserId, email }) => {
+  const authIdentity = getAuthIdentityModel();
+  if (!authIdentity) {
+    return;
+  }
+  const provider = "GOOGLE";
+  const existing = await authIdentity.findUnique({
+    where: { provider_providerUserId: { provider, providerUserId } },
+    select: { id: true, userId: true },
+  });
+
+  if (existing && existing.userId !== userId) {
+    throw createAuthError("This Google account is already linked to another LearnSphere account", 409);
+  }
+
+  if (!existing) {
+    await authIdentity.create({
+      data: { userId, provider, providerUserId, email },
+    });
+  } else if (existing.userId === userId && email) {
+    await authIdentity.update({
+      where: { id: existing.id },
+      data: { email },
+    });
+  }
+};
+
+const getRolesForUser = async (user, instructorProfile) => {
+  const roles = await getUserRoles(user, instructorProfile);
+  return roles;
+};
+
+const buildGoogleUserPayload = async ({ name, email, providerUserId, role }) => {
+  const normalizedRole = ensureValidGoogleRole(role);
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !normalizedEmail.endsWith("@gmail.com")) {
+    throw createAuthError("Google sign-in is only allowed for Google accounts with a valid @gmail.com address", 400);
+  }
+
+  let user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+  if (normalizedRole === "ADMIN") {
+    if (!user || user.role !== "ADMIN") {
+      throw createAuthError("This Google account is not linked to an authorized administrator account", 403);
+    }
+  } else if (!user) {
+    user = await prisma.$transaction(async (transaction) => {
+      const createdUser = await transaction.user.create({
+        data: {
+          name: name || normalizedEmail.split("@")[0],
+          email: normalizedEmail,
+          passwordHash: crypto.randomBytes(32).toString("hex"),
+          role: "STUDENT",
+          emailVerifiedAt: new Date(),
+        },
+      });
+
+      await transaction.studentProfile.create({
+        data: { userId: createdUser.id },
+      });
+
+      const profile = await transaction.instructorProfile.create({
+        data: {
+          userId: createdUser.id,
+          applicationStatus: "PENDING",
+          professionalBio: "Signed in with Google and awaiting teacher approval.",
+        },
+      });
+
+      return { ...createdUser, instructorProfile: profile };
+    });
+  } else if (user.role === "ADMIN") {
+    throw createAuthError("Use the administrator sign-in flow for admin accounts", 403);
+  }
+
+  if (user.role !== "ADMIN" && user.role !== "INSTRUCTOR") {
+    const existingProfile = await prisma.instructorProfile.findUnique({
+      where: { userId: user.id },
+      select: { applicationStatus: true },
+    });
+
+    if (!existingProfile) {
+      await prisma.instructorProfile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          applicationStatus: "PENDING",
+          professionalBio: "Signed in with Google and awaiting teacher approval.",
+        },
+        update: {
+          applicationStatus: "PENDING",
+          reviewerId: null,
+          reviewedAt: null,
+          rejectionReason: null,
+        },
+      });
+    }
+  }
+
+  if (!user.emailVerifiedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+    user = await prisma.user.findUnique({ where: { id: user.id } });
+  }
+
+  await persistGoogleIdentity({ userId: user.id, providerUserId, email: normalizedEmail });
+  return user;
+};
+
+const issueJwt = async (user) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+
+  const instructorProfile = await prisma.instructorProfile.findUnique({
+    where: { userId: user.id },
+    select: { applicationStatus: true },
+  });
+  const roles = await getRolesForUser(user, instructorProfile);
+
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      roles,
+      emailVerified: true,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "1d" }
+  );
+};
 
 const createAuthError = (message, statusCode) =>
   Object.assign(new Error(message), { statusCode });
@@ -277,8 +466,8 @@ const login = async (input) => {
   const { email, password, expectedRole } =
     input && typeof input === "object" ? input : {};
 
-  if (expectedRole !== undefined && !["STUDENT", "INSTRUCTOR"].includes(expectedRole)) {
-    throw createAuthError("Choose Student or Teacher sign in", 400);
+  if (expectedRole !== undefined && !["STUDENT", "INSTRUCTOR", "ADMIN"].includes(expectedRole)) {
+    throw createAuthError("Choose Student, Teacher, or Administrator sign in", 400);
   }
 
   validateCredentials({ email, password });
@@ -299,6 +488,9 @@ const login = async (input) => {
   if (!user.emailVerifiedAt) {
     throw createAuthError("Verify your email before signing in", 403);
   }
+  if (user.role === "ADMIN") {
+    throw createAuthError("Administrator accounts must sign in with Google", 403);
+  }
 
   const instructorProfile = await prisma.instructorProfile.findUnique({
     where: { userId: user.id },
@@ -306,13 +498,16 @@ const login = async (input) => {
   });
   const isTeacherApplicant = Boolean(instructorProfile);
   const roles = await getUserRoles(user, instructorProfile);
-  const roleMatches = user.role === "ADMIN"
-    || expectedRole === undefined
-    || roles.includes(expectedRole)
-    || (expectedRole === "INSTRUCTOR" && isTeacherApplicant);
+  const roleMatches = expectedRole === undefined
+    || (expectedRole === "ADMIN"
+      ? user.role === "ADMIN"
+      : roles.includes(expectedRole)
+        || (expectedRole === "INSTRUCTOR" && isTeacherApplicant));
   if (!roleMatches) {
     throw createAuthError(
-      expectedRole === "INSTRUCTOR"
+      expectedRole === "ADMIN"
+        ? "This account is not an administrator account. Choose Student or Teacher sign in."
+        : expectedRole === "INSTRUCTOR"
         ? "This account is not a teacher applicant. Submit a teacher application or use Student sign in."
         : "This account is not a student account. Choose Teacher sign in.",
       403
@@ -385,6 +580,8 @@ const resendVerification = async (input) => {
       user,
       isPendingTeacherApplication
         ? "TEACHER_APPLICATION"
+        : user.role === "ADMIN"
+          ? "ADMIN"
         : user.role === "INSTRUCTOR" || instructorProfile
           ? "INSTRUCTOR"
           : "STUDENT"
@@ -435,10 +632,85 @@ const getProfile = async (id) => {
   };
 };
 
+const startGoogleAuth = async (query = {}) => {
+  const role = ensureValidGoogleRole(query.role || "INSTRUCTOR");
+  const googleClient = getGoogleClient();
+  if (!googleClient) {
+    throw createAuthError("Google OAuth is not configured on the server", 503);
+  }
+
+  const { nonce, state } = buildGoogleState(role);
+  const authUrl = googleClient.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: ["openid", "email", "profile"],
+    include_granted_scopes: true,
+    redirect_uri: GOOGLE_CALLBACK_URL,
+    state,
+    nonce,
+  });
+
+  return { authUrl, state };
+};
+
+const googleCallback = async (query = {}) => {
+  const googleClient = getGoogleClient();
+  if (!googleClient) {
+    throw createAuthError("Google OAuth is not configured on the server", 503);
+  }
+
+  if (query.error) {
+    throw createAuthError(`Google authorization failed: ${query.error}`, 400);
+  }
+
+  if (!query.code) {
+    throw createAuthError("Google authorization response is missing the callback code", 400);
+  }
+
+  const { role, nonce } = verifyGoogleState(query.state);
+  const { tokens } = await googleClient.getToken({
+    code: query.code,
+    redirect_uri: GOOGLE_CALLBACK_URL,
+  });
+  const ticket = await googleClient.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: GOOGLE_CLIENT_ID,
+    issuer: ["accounts.google.com", "https://accounts.google.com"],
+  });
+  const payload = ticket.getPayload();
+
+  if (!payload || !payload.sub) {
+    throw createAuthError("Google identity is missing required user information", 401);
+  }
+
+  if (!payload.nonce || payload.nonce !== nonce) {
+    throw createAuthError("Google sign-in state could not be verified", 401);
+  }
+
+  if (payload.email_verified !== true) {
+    throw createAuthError("Google email verification is required to continue", 401);
+  }
+
+  const user = await buildGoogleUserPayload({
+    role,
+    name: payload.name || payload.email,
+    email: payload.email,
+    providerUserId: payload.sub,
+  });
+
+  const token = await issueJwt(user);
+  return {
+    token,
+    user: await getProfile(user.id),
+  };
+};
+
 module.exports = {
   register,
   registerTeacherApplication,
   login,
+  startGoogleAuth,
+  googleCallback,
   verifyEmail,
   resendVerification,
   getProfile,

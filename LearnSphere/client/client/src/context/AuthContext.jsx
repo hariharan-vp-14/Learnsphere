@@ -1,7 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import api, { AUTH_SESSION_EXPIRED_EVENT } from '../api/axios'
+import api, { API_URL, AUTH_SESSION_EXPIRED_EVENT } from '../api/axios'
 
 const AuthContext = createContext(null)
+let sessionRequest
+
+const getCurrentSession = () => {
+  if (!sessionRequest) {
+    sessionRequest = api.get('/me').finally(() => {
+      sessionRequest = null
+    })
+  }
+  return sessionRequest
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -16,13 +26,16 @@ export function AuthProvider({ children }) {
     }
     window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, clearExpiredSession)
 
-    api.get('/me')
+    getCurrentSession()
       .then(({ data }) => {
         if (isCurrent) setUser(data.data)
       })
       .catch((error) => {
         if (!isCurrent) return
-        if (error.response?.status !== 401 && error.response?.status !== 403) {
+        if (error.response?.status === 401) {
+          setUser(null)
+          setAuthError('')
+        } else {
           setAuthError(error.response?.data?.message || error.message)
         }
       })
@@ -77,6 +90,10 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
+  const loginWithGoogle = useCallback((role = 'INSTRUCTOR') => {
+    window.location.assign(`${API_URL}/api/auth/google/start?role=${encodeURIComponent(role)}`)
+  }, [])
+
   const logout = useCallback(async () => {
     await api.post('/logout')
     setUser(null)
@@ -87,6 +104,7 @@ export function AuthProvider({ children }) {
     isLoading,
     authError,
     login,
+    loginWithGoogle,
     register,
     applyForInstructor,
     resendVerification,
@@ -97,6 +115,7 @@ export function AuthProvider({ children }) {
     isLoading,
     authError,
     login,
+    loginWithGoogle,
     register,
     applyForInstructor,
     resendVerification,

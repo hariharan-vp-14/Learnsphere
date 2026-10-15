@@ -8,7 +8,9 @@ function VerificationPending() {
   const { resendVerification } = useAuth()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const selectedRole = searchParams.get('role') === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'STUDENT'
+  const requestedRole = searchParams.get('role')
+  const selectedRole = ['INSTRUCTOR', 'ADMIN'].includes(requestedRole) ? requestedRole : 'STUDENT'
+  const isAdminRegistration = selectedRole === 'ADMIN'
   const isTeacherApplication = selectedRole === 'INSTRUCTOR' && searchParams.get('application') === '1'
   const emailVerified = searchParams.get('verified') === '1'
   const [email, setEmail] = useState(location.state?.email || '')
@@ -45,7 +47,9 @@ function VerificationPending() {
             ? emailVerified
               ? 'Your email is verified. An administrator must approve your teacher application before you can access teaching tools.'
               : 'Your teacher application is submitted. Open the verification link we sent to your email; an administrator will review it after verification.'
-            : 'Your student account is created. Open the verification link we sent to your email to activate it and return to LearnSphere.'}
+            : isAdminRegistration
+              ? 'Your administrator account is created. Open the verification link we sent to your email to activate it before signing in.'
+              : 'Your student account is created. Open the verification link we sent to your email to activate it and return to LearnSphere.'}
         </p>
         {email && <p className="mt-3 break-all text-sm font-bold text-[#354418]">{email}</p>}
         {!emailVerified && (
@@ -75,7 +79,7 @@ function VerificationPending() {
           </button>
         </form>}
         <Link className="mt-5 inline-flex text-sm font-bold text-[#4f6125] no-underline hover:text-[#29331d]" to={`/login?role=${isTeacherApplication ? 'STUDENT' : selectedRole}`}>
-          Go to student sign in
+          Go to {isAdminRegistration ? 'administrator' : isTeacherApplication ? 'student' : selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in
         </Link>
       </section>
     </AuthLayout>

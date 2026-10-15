@@ -1,9 +1,12 @@
 export function getDashboardPath(user, preferredRole) {
   const roles = user?.roles || (user?.role ? [user.role] : [])
   if (roles.includes('ADMIN') || user?.role === 'ADMIN') return '/admin/dashboard'
-  if (preferredRole === 'INSTRUCTOR'
-      && user?.instructorProfile
-      && user.instructorProfile.applicationStatus !== 'APPROVED') {
+  if (
+    user?.instructorProfile
+    && user.instructorProfile.applicationStatus !== 'APPROVED'
+    && preferredRole !== 'STUDENT'
+    && (preferredRole === 'INSTRUCTOR' || !roles.includes('INSTRUCTOR'))
+  ) {
     return '/teacher/application'
   }
   if (preferredRole === 'STUDENT' && roles.includes('STUDENT')) return '/dashboard'

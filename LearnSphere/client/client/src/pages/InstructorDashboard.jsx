@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Archive, BookOpen, Check, Edit3, Plus, Send, Undo2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import coursesApi from '../api/courses'
 import { getApiErrorMessage } from '../api/axios'
 import studioApi from '../api/studio'
@@ -15,6 +15,7 @@ const formatPrice = (price) => Number(price) === 0
 
 function InstructorDashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const applicationStatus = user.instructorProfile?.applicationStatus
   const applicationPending = applicationStatus === 'PENDING'
   const applicationRejected = applicationStatus === 'REJECTED'
@@ -151,12 +152,13 @@ function InstructorDashboard() {
         })
         setNotice('Course changes saved.')
       } else {
-        await coursesApi.post('/', {
+        const { data } = await coursesApi.post('/', {
           title: form.title,
           description: form.description,
           price: Number(form.price),
         })
-        setNotice('Draft course created. Publish it when it is ready for students.')
+        navigate(`/instructor/courses/${data.data.id}/curriculum`)
+        return
       }
       setShowForm(false)
       setEditingId(null)

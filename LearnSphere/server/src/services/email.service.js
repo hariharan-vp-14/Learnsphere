@@ -22,7 +22,7 @@ const sendVerificationEmail = async ({ email, token, accountType }) => {
   if (accountType === "TEACHER_APPLICATION") {
     verificationUrl.searchParams.set("role", "INSTRUCTOR");
     verificationUrl.searchParams.set("flow", "teacher-application");
-  } else if (accountType === "STUDENT" || accountType === "INSTRUCTOR") {
+  } else if (accountType === "STUDENT" || accountType === "INSTRUCTOR" || accountType === "ADMIN") {
     verificationUrl.searchParams.set("role", accountType);
   }
 

@@ -5,6 +5,8 @@ const {
   verifyEmail,
   resendVerification,
   login,
+  startGoogleAuth,
+  googleCallback,
   getMe,
   logout,
 } = require("../controllers/auth.controller");
@@ -17,6 +19,8 @@ router.post("/teacher-applications", registerTeacherApplication);
 router.post("/verify-email", verifyEmail);
 router.post("/resend-verification", resendVerification);
 router.post("/login", login);
+router.get("/google/start", startGoogleAuth);
+router.get("/google/callback", googleCallback);
 router.get("/me", protect, getMe);
 router.post("/logout", logout);
 

@@ -1,189 +1,129 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { getApiErrorMessage } from '../api/axios'
-import AccountTypeChooser from '../components/AccountTypeChooser'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
 import { getDashboardPath } from '../utils/userRoutes'
 
-function Register() {
-  const { register, applyForInstructor, user } = useAuth()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const requestedRole = searchParams.get('role')
-  const selectedRole = ['STUDENT', 'INSTRUCTOR'].includes(requestedRole) ? requestedRole : null
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    professionalBio: '',
-    expertise: '',
-  })
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
+const inputClassName = 'h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none placeholder:text-slate-500 focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]'
+const buttonClassName = 'inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#465820] to-[#617832] px-4 text-sm font-bold text-white shadow-[0_10px_22px_rgba(63,77,36,0.24)] transition hover:-translate-y-0.5 hover:from-[#354418] hover:to-[#4f6125] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7] disabled:cursor-wait disabled:opacity-60'
 
-  function updateForm(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
+function Register() {
+  const { register, loginWithGoogle, isLoading, user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const requestedRole = searchParams.get('role')
+  const selectedRole = ['STUDENT', 'INSTRUCTOR', 'ADMIN'].includes(requestedRole) ? requestedRole : 'STUDENT'
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  if (selectedRole === 'ADMIN') {
+    return <Navigate to="/login?role=ADMIN" replace />
+  }
+  if (user && !isLoading) {
+    return <Navigate to={getDashboardPath(user, selectedRole)} replace />
   }
 
-  async function submitForm(event) {
+  async function submitStudentRegistration(event) {
     event.preventDefault()
     setBusy(true)
     setError('')
-    setMessage('')
-
     try {
-      const result = selectedRole === 'INSTRUCTOR'
-        ? await applyForInstructor(form)
-        : await register({
-          name: form.name,
-          email: form.email,
-          password: form.password,
-        })
-      if (selectedRole === 'INSTRUCTOR' && result.data?.applicationStatus !== 'APPROVED') {
-        navigate(`/verification-pending?role=INSTRUCTOR&application=1${result.data?.emailVerified ? '&verified=1' : ''}`, {
-          replace: true,
-          state: { email: form.email },
-        })
-      } else if (result.data?.emailVerified) {
-        if (user?.id === result.data.id) {
-          navigate(getDashboardPath(user, selectedRole), { replace: true })
-        } else {
-          navigate(`/login?role=${selectedRole}&registered=1`, {
-            replace: true,
-            state: { message: result.message },
-          })
-        }
-      } else {
-        navigate(`/verification-pending?role=${selectedRole}`, {
-          replace: true,
-          state: { email: form.email },
-        })
-      }
+      const result = await register({ name, email, password })
+      navigate('/verification-pending?role=STUDENT', {
+        replace: true,
+        state: { email: result.data.email },
+      })
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError))
+      setError(getApiErrorMessage(requestError, 'Unable to create your account'))
     } finally {
       setBusy(false)
     }
   }
 
+  const isStudent = selectedRole === 'STUDENT'
+
   return (
     <AuthLayout mode="register">
-      {!selectedRole ? (
-        <AccountTypeChooser mode="register" />
-      ) : (
-        <section
-          className="rounded-[26px] border border-white/90 bg-white/95 p-6 shadow-[0_28px_80px_rgba(55,66,35,0.14)] backdrop-blur sm:p-9"
-          aria-labelledby="auth-title"
-        >
-          <div className="mb-7 grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100/90 p-1.5" aria-label="Authentication options">
-            <Link className="grid min-h-11 place-items-center rounded-[9px] text-[13px] font-semibold text-slate-600 no-underline transition hover:text-[#445523]" to={`/login?role=${selectedRole}`}>
-              Sign in
-            </Link>
-            <Link className="grid min-h-11 place-items-center rounded-[9px] bg-white text-[13px] font-bold text-[#29331d] no-underline shadow-sm" to={`/register?role=${selectedRole}`} aria-current="page">
-              Create account
-            </Link>
-          </div>
-          <Link className="mb-5 inline-flex text-xs font-bold text-[#4f6125] no-underline hover:text-[#29331d]" to="/register">
-            ← Change account type
-          </Link>
-          <p className="mb-2 mt-0 text-[10px] font-extrabold tracking-[1.7px] text-[#445523]">
-            {selectedRole === 'INSTRUCTOR' ? 'TEACH ON LEARNSPHERE' : 'GET STARTED'}
-          </p>
-          <h2 className="m-0 text-[26px] font-extrabold tracking-[-0.8px] text-[#27301e]" id="auth-title">
-            {selectedRole === 'INSTRUCTOR' ? 'Apply to teach on LearnSphere' : 'Create your student account'}
-          </h2>
-          <p className="mb-6 mt-2 text-[13px] leading-[1.6] text-slate-500">
-            {selectedRole === 'INSTRUCTOR'
-              ? 'Use your existing LearnSphere email and password, or create them now. Verify your email, then an administrator will review your teacher application.'
-              : 'We’ll send a verification link to your Gmail inbox before you can sign in.'}
-          </p>
+      <section
+        className="rounded-[26px] border border-white/90 bg-white/95 p-6 shadow-[0_28px_80px_rgba(55,66,35,0.14)] backdrop-blur sm:p-9"
+        aria-labelledby="auth-title"
+      >
+        <p className="mb-2 mt-0 text-[10px] font-extrabold tracking-[1.7px] text-[#445523]">
+          {isStudent ? 'STUDENT REGISTRATION' : 'TEACH ON LEARNSPHERE'}
+        </p>
+        <h2 className="m-0 text-[26px] font-extrabold tracking-[-0.8px] text-[#27301e]" id="auth-title">
+          {isStudent ? 'Create your account' : 'Continue as a teacher'}
+        </h2>
+        <p className="mb-6 mt-2 text-[13px] leading-[1.6] text-slate-500">
+          {isStudent
+            ? 'Create a student account with your email and password. Verify your email before signing in.'
+            : 'Sign in with Google to submit or check your teacher application. Teaching tools unlock after approval.'}
+        </p>
 
-          <form className="grid gap-4" onSubmit={submitForm}>
+        {error && (
+          <p className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-xs text-rose-800" role="alert">
+            {error}
+          </p>
+        )}
+
+        {isStudent ? (
+          <form className="grid gap-4" onSubmit={submitStudentRegistration}>
             <label className="grid gap-2 text-xs font-bold text-slate-700">
-              Full name
+              Name
               <input
-                className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
                 autoComplete="name"
-                maxLength="191"
-                name="name"
-                onChange={updateForm}
-                placeholder="Your name"
+                className={inputClassName}
+                onChange={(event) => setName(event.target.value)}
                 required
-                value={form.name}
+                value={name}
               />
             </label>
             <label className="grid gap-2 text-xs font-bold text-slate-700">
-              {selectedRole === 'INSTRUCTOR' ? 'Account email' : 'Gmail address'}
+              Email
               <input
-                className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
                 autoComplete="email"
-                name="email"
-                onChange={updateForm}
+                className={inputClassName}
+                onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@gmail.com"
                 required
                 type="email"
-                value={form.email}
+                value={email}
               />
             </label>
-            {selectedRole === 'INSTRUCTOR' && (
-              <>
-                <label className="grid gap-2 text-xs font-bold text-slate-700">
-                  Teaching bio <span className="font-normal text-slate-500">(optional)</span>
-                  <textarea
-                    className="min-h-24 w-full resize-y rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-3 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
-                    maxLength={4000}
-                    name="professionalBio"
-                    onChange={updateForm}
-                    placeholder="Share a little about your teaching experience"
-                    value={form.professionalBio}
-                  />
-                </label>
-                <label className="grid gap-2 text-xs font-bold text-slate-700">
-                  Expertise <span className="font-normal text-slate-500">(optional)</span>
-                  <input
-                    className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
-                    maxLength={4000}
-                    name="expertise"
-                    onChange={updateForm}
-                    placeholder="Topics you teach"
-                    value={form.expertise}
-                  />
-                </label>
-              </>
-            )}
             <label className="grid gap-2 text-xs font-bold text-slate-700">
               Password
               <input
-                className="h-[50px] w-full rounded-xl border border-slate-300 bg-slate-50/70 px-4 text-sm text-slate-950 outline-none transition placeholder:text-slate-500 hover:border-[#9ca982] focus:border-[#71883c] focus:bg-white focus:ring-4 focus:ring-[#e8eddc]"
                 autoComplete="new-password"
-                minLength="8"
-                name="password"
-                onChange={updateForm}
-                placeholder="At least 8 characters"
+                className={inputClassName}
+                minLength={8}
+                onChange={(event) => setPassword(event.target.value)}
                 required
                 type="password"
-                value={form.password}
+                value={password}
               />
             </label>
-            {error && <p className="m-0 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-xs leading-[1.5] text-rose-700" role="alert">{error}</p>}
-            {message && <p className="m-0 rounded-xl border border-emerald-100 bg-emerald-50 px-3.5 py-3 text-xs leading-[1.5] text-emerald-700" role="status">{message}</p>}
-            <button
-              className="mt-1 inline-flex h-[50px] w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-[#465820] to-[#617832] px-4 text-sm font-bold text-white shadow-[0_10px_22px_rgba(63,77,36,0.24)] transition hover:-translate-y-0.5 hover:from-[#354418] hover:to-[#4f6125] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7] disabled:cursor-wait disabled:opacity-70"
-              disabled={busy}
-            >
-              {busy ? 'Please wait…' : selectedRole === 'INSTRUCTOR' ? 'Submit teacher application' : 'Create student account'}
-              {!busy && <span aria-hidden="true">→</span>}
+            <button className={buttonClassName} disabled={busy} type="submit">
+              {busy ? 'Creating account…' : 'Create student account'}
             </button>
-          </form>
-          {selectedRole === 'INSTRUCTOR' && (
-            <p className="mb-0 mt-4 text-center text-xs leading-5 text-[#535b4a]">
-              Your application will be reviewed after email verification. Teacher tools unlock only after approval.
+            <p className="mb-0 mt-1 text-center text-xs text-slate-600">
+              Already registered?{' '}
+              <Link className="font-bold text-[#4f6125] underline" to="/login?role=STUDENT">Sign in</Link>
             </p>
-          )}
-        </section>
-      )}
+          </form>
+        ) : (
+          <button className={buttonClassName} onClick={() => loginWithGoogle('INSTRUCTOR')} type="button">
+            Continue with Google
+          </button>
+        )}
+
+        <Link className="mt-5 inline-flex text-sm font-bold text-[#4f6125] underline" to="/choose-role">
+          Choose a different role
+        </Link>
+      </section>
     </AuthLayout>
   )
 }

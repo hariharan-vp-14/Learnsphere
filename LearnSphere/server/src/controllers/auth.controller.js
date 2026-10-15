@@ -7,6 +7,13 @@ const COOKIE_OPTIONS = {
   sameSite: "lax",
   path: "/",
 };
+const GOOGLE_STATE_COOKIE = "google_oauth_state";
+const GOOGLE_STATE_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/api/auth/google",
+};
 
 const respondWithAuthError = (res, error, fallbackMessage) => {
   const statusCode = error.statusCode || 500;
@@ -94,6 +101,54 @@ const login = async (req, res) => {
   }
 };
 
+const startGoogleAuth = async (req, res) => {
+  try {
+    const result = await authService.startGoogleAuth(req.query || {});
+    res.cookie(GOOGLE_STATE_COOKIE, result.state, {
+      ...GOOGLE_STATE_COOKIE_OPTIONS,
+      maxAge: 10 * 60 * 1000,
+    });
+    return res.redirect(result.authUrl);
+  } catch (error) {
+    const message = error.message || "Google sign-in is unavailable";
+    const target = `${process.env.CLIENT_URL || "http://localhost:5173"}/login?role=${encodeURIComponent(req.query?.role || "INSTRUCTOR")}&error=${encodeURIComponent(message)}`;
+    return res.redirect(target);
+  }
+};
+
+const googleCallback = async (req, res) => {
+  try {
+    const cookieState = req.cookies?.[GOOGLE_STATE_COOKIE];
+    const callbackState = req.query?.state;
+    if (!cookieState || !callbackState || cookieState !== callbackState) {
+      throw Object.assign(new Error("Google sign-in request could not be verified"), {
+        statusCode: 400,
+      });
+    }
+
+    const result = await authService.googleCallback(req.query || {});
+    res.cookie(COOKIE_NAME, result.token, {
+      ...COOKIE_OPTIONS,
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+    res.clearCookie(GOOGLE_STATE_COOKIE, GOOGLE_STATE_COOKIE_OPTIONS);
+    const user = result.user;
+    const redirectPath = user.role === "ADMIN"
+      ? "/admin/dashboard"
+      : user.role === "INSTRUCTOR"
+        || user.instructorProfile?.applicationStatus === "APPROVED"
+          ? "/instructor/courses"
+          : user.instructorProfile
+            ? "/teacher/application"
+            : "/dashboard";
+    return res.redirect(`${process.env.CLIENT_URL || "http://localhost:5173"}${redirectPath}`);
+  } catch (error) {
+    res.clearCookie(GOOGLE_STATE_COOKIE, GOOGLE_STATE_COOKIE_OPTIONS);
+    const message = encodeURIComponent(error.message || "Google sign-in failed");
+    return res.redirect(`${process.env.CLIENT_URL || "http://localhost:5173"}/login?role=INSTRUCTOR&error=${message}`);
+  }
+};
+
 const getMe = async (req, res) => {
   try {
     const user = await authService.getProfile(req.user.id);
@@ -122,6 +177,8 @@ module.exports = {
   verifyEmail,
   resendVerification,
   login,
+  startGoogleAuth,
+  googleCallback,
   getMe,
   logout,
 };

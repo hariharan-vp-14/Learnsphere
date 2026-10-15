@@ -35,9 +35,10 @@ function IntroPage() {
   const isAdmin = !isLoading
     && Boolean(user)
     && (userRoles.includes('ADMIN') || String(user?.role || '').toUpperCase() === 'ADMIN')
+  const adminEntryPath = isAdmin ? '/admin/dashboard' : '/login?role=ADMIN'
 
   function enterLearnSphere() {
-    navigate(user ? getDashboardPath(user) : '/login')
+    navigate(user ? getDashboardPath(user) : '/choose-role')
   }
 
   return (
@@ -48,18 +49,17 @@ function IntroPage() {
             LearnSphere<span className="text-[#71883c]"> AI</span>
           </Link>
           <nav className="flex items-center gap-3 sm:gap-6" aria-label="Public navigation">
-            {isAdmin && (
-              <Link
-                aria-label="Admin Dashboard"
-                className="inline-flex size-10 items-center justify-center rounded-xl border border-[#667c32] bg-[#667c32] text-white no-underline shadow-sm transition hover:bg-[#52672a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7]"
-                title="Admin Dashboard"
-                to="/admin/dashboard"
-              >
-                <Check className="size-5" strokeWidth={3} aria-hidden="true" />
-              </Link>
-            )}
+            <Link
+              aria-label={isAdmin ? 'Admin Dashboard' : 'Administrator sign in'}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#667c32] bg-[#667c32] px-3 text-xs font-extrabold text-white no-underline shadow-sm transition hover:bg-[#52672a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce5c7]"
+              title={isAdmin ? 'Admin Dashboard' : 'Administrator sign in'}
+              to={adminEntryPath}
+            >
+              <Check className="size-5" strokeWidth={3} aria-hidden="true" />
+              <span>Admin</span>
+            </Link>
             {!user && (
-              <Link className="intro-sign-in rounded-xl border border-[#d9dfca] bg-white/80 px-4 py-2.5 text-xs font-bold text-[#394625] no-underline transition hover:bg-[#edf1e3] sm:text-sm" to="/login">
+              <Link className="intro-sign-in rounded-xl border border-[#d9dfca] bg-white/80 px-4 py-2.5 text-xs font-bold text-[#394625] no-underline transition hover:bg-[#edf1e3] sm:text-sm" to="/choose-role">
                 Sign in
               </Link>
             )}
@@ -88,7 +88,7 @@ function IntroPage() {
                 onClick={enterLearnSphere}
                 type="button"
               >
-                {isLoading ? 'Checking your session…' : user ? 'Open your dashboard' : 'Enter LearnSphere'}
+                {isLoading ? 'Checking your session…' : user ? 'Open your dashboard' : 'Get Started'}
                 {!isLoading && <ArrowRight className="size-4" aria-hidden="true" />}
               </button>
             </div>

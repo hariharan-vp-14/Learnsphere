@@ -10,6 +10,7 @@ import InstructorStudents from './pages/InstructorStudents'
 import CurriculumEditor from './pages/CurriculumEditor'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ChooseRole from './pages/ChooseRole'
 import StudentLearning from './pages/StudentLearning'
 import StudentDashboard from './pages/StudentDashboard'
 import AdminDashboard from './pages/AdminDashboard'
@@ -27,7 +28,7 @@ function VerifyEmail() {
   const token = new URLSearchParams(location.search).get('token')
   const requestedRole = new URLSearchParams(location.search).get('role')
   const isTeacherApplication = new URLSearchParams(location.search).get('flow') === 'teacher-application'
-  const selectedRole = requestedRole === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'STUDENT'
+  const selectedRole = ['INSTRUCTOR', 'ADMIN'].includes(requestedRole) ? requestedRole : 'STUDENT'
 
   useEffect(() => {
     if (!token) return
@@ -77,7 +78,9 @@ function VerifyEmail() {
           to={`/login?role=${isTeacherApplication ? 'STUDENT' : selectedRole}${visibleStatus === 'success' ? '&verified=1' : ''}`}
         >
           {visibleStatus === 'success'
-            ? `Continue to ${isTeacherApplication ? 'student' : selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in`
+            ?             `Continue to ${isTeacherApplication
+              ? 'student'
+              : selectedRole === 'ADMIN' ? 'administrator' : selectedRole === 'INSTRUCTOR' ? 'teacher' : 'student'} sign in`
             : 'Return to sign in'}
         </Link>
       )}
@@ -115,6 +118,7 @@ function App() {
       />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/choose-role" element={<ChooseRole />} />
       <Route path="/verification-pending" element={<VerificationPending />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route

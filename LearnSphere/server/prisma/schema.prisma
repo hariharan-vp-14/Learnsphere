@@ -69,16 +69,32 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  courses          Course[]          @relation("InstructorCourses")
-  studentProfile   StudentProfile?
-  instructorProfile InstructorProfile?
-  reviewedTeacherApplications InstructorApplicationReview[] @relation("ApplicationReviewer")
-  reviewedInstructorProfiles InstructorProfile[]            @relation("InstructorProfileReviewer")
-  enrollments      Enrollment[]
-  lessonProgress   LessonProgress[]
-  attempts         Attempt[]
-  orders           Order[]
-  certificates     Certificate[]
+  courses                      Course[]                       @relation("InstructorCourses")
+  studentProfile               StudentProfile?
+  instructorProfile            InstructorProfile?
+  authIdentities               AuthIdentity[]
+  reviewedTeacherApplications  InstructorApplicationReview[] @relation("ApplicationReviewer")
+  reviewedInstructorProfiles   InstructorProfile[]            @relation("InstructorProfileReviewer")
+  enrollments                  Enrollment[]
+  lessonProgress               LessonProgress[]
+  attempts                     Attempt[]
+  orders                       Order[]
+  certificates                 Certificate[]
+}
+
+model AuthIdentity {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String
+  providerUserId String
+  email          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@index([provider, email])
 }
 
 model StudentProfile {
